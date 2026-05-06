@@ -1,0 +1,9 @@
+
+	{
+		"id": "char_test_01",
+		"name": "Miku",
+		"description": "A test character.",
+		"base_stats_init": { "shame": 90, "lust": 5 },
+		"custom_tags": ["怕黑", "虚拟歌姬"]
+	}
+	
