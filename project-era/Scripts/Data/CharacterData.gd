@@ -36,7 +36,12 @@ const STAT_KEYS = [
 	"exhibitionism",   # 露出癖
 	"semen_addiction", # 精液/体液中毒
 	
-	# 4. 技巧与执行力 (被调教者特有的高潮管理，调教师的技巧归入标签)
+	# 4. 技巧与执行力 (Skills & Mastery)
+	"skill_oral",      # 口交技巧
+	"skill_fingering", # 指交技术
+	"skill_riding",    # 骑乘技巧
+	"roleplay_skill",  # 扮演技巧
+	"sadism_femdom",   # 小恶魔度/施虐狂
 	"edging_control"   # 寸止技巧/高潮忍耐
 ]
 

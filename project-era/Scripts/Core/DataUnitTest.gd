@@ -36,38 +36,54 @@ func _init() -> void:
 	var manager = CharacterManager.new()
 	manager.load_external_characters()
 	
-	# 测试 6：推演引擎连招测试
-	print("\n--- Test: Simulation Engine Task Sequence ---")
+	# 测试 6：推演引擎连招测试 (结合 TaskManager)
+	print("\n--- Test: Simulation Engine Task Sequence via TaskManager ---")
 	var engine = SimulationEngine.new()
+	var task_manager = TaskManager.new()
 	
 	var chise = CharacterData.new()
+	chise.id = "chise_01"
 	chise.char_name = "Chise"
 	chise.stats["shame"]["level"] = 50 # 设定较高的初始羞耻心
 	chise.stats["edging_control"]["level"] = 5 # 给一点寸止能力
+	manager.add_character(chise)
 	
 	var hina = CharacterData.new()
+	hina.id = "hina_01"
 	hina.char_name = "Hina_Instructor"
+	manager.add_character(hina)
 	
-	# 构造一个一上午的调教连招序列
-	var morning_actions: Array[Dictionary] = [
-		{"name": "爱抚", "type": SimulationEngine.CommandType.ICE_BREAK, "target_part": "sensory_C"},
-		{"name": "舔阴", "type": SimulationEngine.CommandType.ICE_BREAK, "target_part": "sensory_C"},
-		{"name": "揉胸", "type": SimulationEngine.CommandType.ICE_BREAK, "target_part": "sensory_B"},
-		{"name": "手指插入", "type": SimulationEngine.CommandType.NORMAL, "target_part": "sensory_V"},
-		{"name": "允许高潮", "type": SimulationEngine.CommandType.FINISHER}
+	# 模拟 LLM 返回了一个批量任务分配 JSON 数组
+	var mock_llm_response = [
+		{
+			"instructor": "hina_01",
+			"target": "chise_01",
+			"macro_strategy": "oral_training"
+		},
+		{
+			"instructor": "none",
+			"target": "char_test_01", # 这是上面 Mod 测加载的 Miku
+			"macro_strategy": "solitary_confinement"
+		}
 	]
 	
-	var logs = engine.process_task_sequence(chise, hina, morning_actions)
+	# 解析意图进入队列
+	task_manager.enqueue_macro_tasks(mock_llm_response)
+	
+	# 一次性执行所有任务并获取日志
+	var logs = task_manager.execute_all_tasks(manager, engine)
 	for l in logs:
 		print(l)
 		
 	print("\n结算后 Chise 面板变化:")
+	print("- M感觉 Level: ", chise.stats["sensory_M"]["level"], " (Exp: ", chise.stats["sensory_M"]["exp"], ")")
 	print("- C感觉 Level: ", chise.stats["sensory_C"]["level"], " (Exp: ", chise.stats["sensory_C"]["exp"], ")")
-	print("- B感觉 Level: ", chise.stats["sensory_B"]["level"], " (Exp: ", chise.stats["sensory_B"]["exp"], ")")
-	print("- V感觉 Level: ", chise.stats["sensory_V"]["level"], " (Exp: ", chise.stats["sensory_V"]["exp"], ")")
 	print("- 羞耻心 Level: ", chise.stats["shame"]["level"], " (Exp: ", chise.stats["shame"]["exp"], ")")
 	print("- 接受度 Level: ", chise.stats["devotion"]["level"], " (Exp: ", chise.stats["devotion"]["exp"], ")")
 
-	
+	print("\n结算后 Miku 面板变化 (禁欲逆向调教):")
+	var miku2 = manager.get_character("char_test_01")
+	print("- 欲望 Level: ", miku2.stats["lust"]["level"], " (Exp: ", miku2.stats["lust"]["exp"], ")")
+
 	print("\n--- Test Completed ---")
 	quit()

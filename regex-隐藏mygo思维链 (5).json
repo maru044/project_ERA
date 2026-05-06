@@ -1,0 +1,17 @@
+{
+    "id": "e59bdf79-637f-4e8c-996d-3c265d0fa322",
+    "scriptName": "隐藏mygo思维链",
+    "findRegex": "/(<(disclaimer|Real_Task|thinking|标签回顾|imgthink)>.*?</\\2>)|.*(?:\\[使用简体中文开始游戏[:：]]|\\[小助手回复中:]|<\\/think>)|<!--tag：.*?-->/gsi",
+    "replaceString": "",
+    "trimStrings": [],
+    "placement": [
+        2
+    ],
+    "disabled": false,
+    "markdownOnly": true,
+    "promptOnly": true,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+}

@@ -35,13 +35,54 @@ func process_task_sequence(target: CharacterData, instructor: CharacterData, act
 	for key in temp_pleasure_pool.keys():
 		temp_pleasure_pool[key] = 0
 		
+	var has_finisher = false
 	# 遍历执行每个动作
 	for action in actions:
 		var result_log = _execute_single_action(target, instructor, action)
 		turn_logs.append(result_log)
-		
+		if action.get("type", CommandType.NORMAL) == CommandType.FINISHER:
+			has_finisher = true
+			
+	# 如果本回合没有主动下达【允许高潮】的指令，但快感已经满了
+	# 按照设计意图，进行默认的 1重高潮自然结算
+	if not has_finisher:
+		var auto_log = _process_auto_orgasm(target)
+		if auto_log != "":
+			turn_logs.append(auto_log)
+			
 	turn_logs.append("--- 回合调教结束 ---")
 	return turn_logs
+
+# ---------------------------------------------------------
+# 自然高潮结算 (Auto Orgasm - 没有 Finisher 时触发)
+# ---------------------------------------------------------
+func _process_auto_orgasm(target: CharacterData) -> String:
+	var triggered_parts = []
+	var ORGASM_THRESHOLD = 80
+	for part in temp_pleasure_pool.keys():
+		if temp_pleasure_pool[part] >= ORGASM_THRESHOLD:
+			triggered_parts.append(part)
+			
+	if triggered_parts.size() == 0:
+		return ""
+		
+	var log_str = "[自然高潮] 达到极限，自动释放！部位: " + str(triggered_parts)
+	var base_exp = 500
+	
+	# 默认1倍基础经验
+	for part in triggered_parts:
+		target.add_exp(part, base_exp)
+		target.add_exp("devotion", base_exp / 4)
+		log_str += " [" + part + " +" + str(base_exp) + " Exp]"
+		
+	# 自然高潮不带有强力击碎心防的效果，仅轻微减羞耻
+	target.reduce_exp("shame", 50)
+	log_str += " [devotion +" + str(base_exp / 4) + " Exp] [shame -50 Exp]"
+	
+	for key in temp_pleasure_pool.keys():
+		temp_pleasure_pool[key] = 0
+		
+	return log_str
 
 # ---------------------------------------------------------
 # 单一指令执行与 COC 检定核心逻辑
@@ -100,21 +141,29 @@ func _execute_single_action(target: CharacterData, instructor: CharacterData, ac
 		log_str += "成功"
 		if is_critical: log_str += "(大成功!)"
 		
-		# 成功积累临时快感 (模拟寸止憋着)
+		# [修正] 成功后立刻获得目标部位的基础经验，即使最后没高潮也不亏
 		if target_part != "":
+			var base_part_exp = 100 if not is_critical else 300
+			target.add_exp(target_part, base_part_exp)
+			log_str += " [" + target_part + " +" + str(base_part_exp) + " Exp]"
+			
+			# 成功积累临时快感 (存入寸止池)
 			var pleasure_gain = 30 if not is_critical else 60
 			_add_temp_pleasure(target, target_part, pleasure_gain)
 			log_str += " 临时快感提升."
 			
 		# 获得底层的真实Exp (顺从和欲望)
-		target.add_exp("yuri_obedience", 10 if not is_critical else 30)
-		target.add_exp("lust", 5 if not is_critical else 15)
+		var ob_exp = 10 if not is_critical else 30
+		var lust_exp = 5 if not is_critical else 15
+		target.add_exp("yuri_obedience", ob_exp)
+		target.add_exp("lust", lust_exp)
+		log_str += " [yuri_obedience +" + str(ob_exp) + " Exp] [lust +" + str(lust_exp) + " Exp]"
 		
 	else:
 		log_str += "失败"
 		# 失败惩罚：增加反抗度
 		target.add_exp("rebellion", 20)
-		log_str += " 角色产生抗拒."
+		log_str += " 角色产生抗拒. [rebellion +20 Exp]"
 		
 	return log_str
 
@@ -163,22 +212,25 @@ func _process_orgasm_finisher(target: CharacterData) -> String:
 	# ===== 核爆级多重高潮收益结算 =====
 	# 基础经验基数
 	var base_exp = 500
-	# 多重乘数：1重x1, 2重x3, 3重x6, 4重x10
-	var multiplier = (orgasm_count * (orgasm_count + 1)) / 2.0 
+	# [修正] 多重乘数：遵循ERA设定。2重高潮每个部位得2倍，3重得3倍...
+	# 总倍率 = orgasm_count * orgasm_count
+	var multiplier = orgasm_count
 	var final_exp_reward = int(base_exp * multiplier)
 	
 	# 1. 对应爆发部位获得海量 Exp
 	for part in triggered_parts:
 		target.add_exp(part, final_exp_reward)
+		log_str += " [" + part + " +" + str(final_exp_reward) + " Exp]"
 		
 	# 2. 强行削减羞耻心，击碎心防 (这是最难涨的负向属性，只有多重高潮能有效击破)
-	var shame_damage = orgasm_count * 150 # 几百点经验的强制扣减
+	var shame_damage = int(pow(orgasm_count, 2.0)) * 100 # 几百点甚至上千经验的强制扣减
 	target.reduce_exp("shame", shame_damage)
+	log_str += " [shame -" + str(shame_damage) + " Exp]"
 	
 	# 3. 获得接受度 (Devotion) - 只有二重以上才给接受度
 	if orgasm_count >= 2:
 		target.add_exp("devotion", final_exp_reward / 2)
-		log_str += " | 精神防线崩溃，接受度大幅提升！"
+		log_str += " | 精神防线崩溃，接受度大幅提升！ [devotion +" + str(final_exp_reward / 2) + " Exp]"
 		
 	# 清空结算后的临时快感
 	for key in temp_pleasure_pool.keys():
@@ -196,5 +248,5 @@ func _process_reverse_training(target: CharacterData, action: Dictionary) -> Str
 	
 	if target_stat != "":
 		target.reduce_exp(target_stat, reduce_amount)
-		return "[" + cmd_name + "] 成功执行逆向调教。目标属性 " + target_stat + " 经验大幅扣减。"
+		return "[" + cmd_name + "] 成功执行逆向调教。目标属性 " + target_stat + " 经验大幅扣减。 [" + target_stat + " -" + str(reduce_amount) + " Exp]"
 	return "[" + cmd_name + "] 无效的逆向指令。"

@@ -36,13 +36,18 @@
 ---
 
 ### P1阶段：原生LLM通信与表现层解耦
-目标：通过 Godot 原生的 `HTTPRequest` 节点打通 LLM API。严格控制 API 成本（一键至多1~2次请求），并正确解析 LLM 返回的 Function Calling JSON。
+目标：通过 Godot 原生的 `HTTPRequest` 节点打通 LLM API。极度严格控制 API 成本（**任何一个交互窗口无论涉及多少角色，仅消耗1次 API 请求**）。**彻底放弃易被审查拦截的原生 Tool API，全面转向“预填充破限 (Prefill Jailbreak) + 文本级正则提取”架构。**
 
 * `res://Scripts/Network/LLM_Client.gd`
   - **功能**: 核心通信模块。封装 `HTTPRequest` 发起 POST 请求，管理 API Key。
-  - **熔断机制**: 实现重试限制（至多1次）和请求拦截，防止异常导致的 API 费用失控。
+  - **动态组装机 (Dynamic Context Builder)**: 针对不同游戏模式拼装极其复杂的提示词。
+    - **A模式 (后台分配/结算)**: 注入上帝视角系统提示词，要求输出纯 JSON 供正则提取。
+    - **B模式 (深夜夜伽/晚报)**: 注入《性奴沙盒世界观》，拼接角色面板，要求输出含动作判定的扮演文本。
+    - **C模式 (元叙事助手)**: 注入 Miku 管理员人设，进行第四面墙交流。
+  - **强制破限机制**: 在每次发往 LLM 的 `role: 'model'` 结构中，强行预填充 `</think>\n<thinking>...` 等思考引导词，彻底绕过 Gemini/Claude 等大模型的道德审查。
 * `res://Scripts/Network/ToolRegistry.gd`
-  - **功能**: 工具注册与路由枢纽。定义发给 LLM 的“一次性批量执行” JSON Schema（如 `batch_apply_results`）；解析 LLM 返回的 `tool_calls` 动态映射到引擎本地方法，执行后强制终止回合，不提供冗余的查询动作。
+  - **功能**: 工具注册与提取枢纽（已从原生 Function Calling 进化为正则匹配器）。
+  - **工作流**: 拦截 LLM 返回的 `<content>` 文本。如果文本内包含预定义的宏标签（如 ````json [任务数组] ```` 或 `[STAT_CHANGE: lust +10]`），引擎利用正则表达式强行抠出数据并转交给对应 Manager 运行。
 * `res://Scripts/Systems/EventGenerator.gd`
   - **功能**: 批量打包器（Batch Processor）。在中午干预节点和夜晚结算节点，收集 `SimulationEngine` 产出的原始变更和角色的 Custom Tags，组装成超级 Prompt 一次性发给 LLM，要求在单一 JSON 内返回事件判定、属性修正和表现层文本。
 
