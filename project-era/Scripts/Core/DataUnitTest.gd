@@ -36,30 +36,38 @@ func _init() -> void:
 	var manager = CharacterManager.new()
 	manager.load_external_characters()
 	
-	# 手动造一个测试 Mod
-	var mod_dir = "res://Mods/Characters/TestMod"
-	DirAccess.make_dir_recursive_absolute(mod_dir)
-	var test_json = """
-	{
-		"id": "char_test_01",
-		"name": "Miku",
-		"description": "A test character.",
-		"base_stats_init": { "shame": 90, "lust": 5 },
-		"custom_tags": ["怕黑", "虚拟歌姬"]
-	}
-	"""
-	var file = FileAccess.open(mod_dir + "/character_data.json", FileAccess.WRITE)
-	file.store_string(test_json)
-	file.close()
+	# 测试 6：推演引擎连招测试
+	print("\n--- Test: Simulation Engine Task Sequence ---")
+	var engine = SimulationEngine.new()
 	
-	print("Scanning again after creating test Mod...")
-	manager.load_external_characters()
+	var chise = CharacterData.new()
+	chise.char_name = "Chise"
+	chise.stats["shame"]["level"] = 50 # 设定较高的初始羞耻心
+	chise.stats["edging_control"]["level"] = 5 # 给一点寸止能力
 	
-	var miku = manager.get_character("char_test_01")
-	if miku:
-		print("Loaded Character Name: ", miku.char_name)
-		print("Loaded Character Shame Level: ", miku.stats["shame"]["level"])
-		print("Loaded Character Tags: ", miku.custom_tags)
+	var hina = CharacterData.new()
+	hina.char_name = "Hina_Instructor"
+	
+	# 构造一个一上午的调教连招序列
+	var morning_actions: Array[Dictionary] = [
+		{"name": "爱抚", "type": SimulationEngine.CommandType.ICE_BREAK, "target_part": "sensory_C"},
+		{"name": "舔阴", "type": SimulationEngine.CommandType.ICE_BREAK, "target_part": "sensory_C"},
+		{"name": "揉胸", "type": SimulationEngine.CommandType.ICE_BREAK, "target_part": "sensory_B"},
+		{"name": "手指插入", "type": SimulationEngine.CommandType.NORMAL, "target_part": "sensory_V"},
+		{"name": "允许高潮", "type": SimulationEngine.CommandType.FINISHER}
+	]
+	
+	var logs = engine.process_task_sequence(chise, hina, morning_actions)
+	for l in logs:
+		print(l)
+		
+	print("\n结算后 Chise 面板变化:")
+	print("- C感觉 Level: ", chise.stats["sensory_C"]["level"], " (Exp: ", chise.stats["sensory_C"]["exp"], ")")
+	print("- B感觉 Level: ", chise.stats["sensory_B"]["level"], " (Exp: ", chise.stats["sensory_B"]["exp"], ")")
+	print("- V感觉 Level: ", chise.stats["sensory_V"]["level"], " (Exp: ", chise.stats["sensory_V"]["exp"], ")")
+	print("- 羞耻心 Level: ", chise.stats["shame"]["level"], " (Exp: ", chise.stats["shame"]["exp"], ")")
+	print("- 接受度 Level: ", chise.stats["devotion"]["level"], " (Exp: ", chise.stats["devotion"]["exp"], ")")
+
 	
 	print("\n--- Test Completed ---")
 	quit()
