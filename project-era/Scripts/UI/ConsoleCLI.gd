@@ -174,44 +174,7 @@ func _build_ui() -> void:
 	roster_btn.pressed.connect(_on_roster_button_pressed)
 	header_box.add_child(roster_btn)
 	
-	# --- 角色图鉴弹窗 ---
-	stats_window = Window.new()
-	stats_window.title = "系统后台面板 - 角色状态档案"
-	stats_window.size = Vector2i(800, 600)
-	stats_window.visible = false
-	stats_window.exclusive = true
-	stats_window.close_requested.connect(func(): stats_window.hide())
-	add_child(stats_window)
-	
-	var scroll = ScrollContainer.new()
-	scroll.set_anchors_preset(PRESET_FULL_RECT)
-	stats_window.add_child(scroll)
-	
-	stats_content = RichTextLabel.new()
-	stats_content.bbcode_enabled = true
-	stats_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stats_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	stats_content.custom_minimum_size = Vector2(780, 0)
-	stats_content.add_theme_font_size_override("normal_font_size", 20)
-	stats_content.add_theme_font_size_override("bold_font_size", 20)
-	stats_content.add_theme_font_override("normal_font", custom_font)
-	stats_content.add_theme_font_override("bold_font", custom_font)
-	scroll.add_child(stats_content)
-	
-	# 输出框 (RichTextLabel)
-	output_log = RichTextLabel.new()
-	output_log.bbcode_enabled = true
-	output_log.scroll_following = true
-	output_log.selection_enabled = true # 允许玩家使用鼠标拖拽选中文字
-	output_log.context_menu_enabled = true # 允许玩家右键呼出复制菜单
-	output_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	output_log.add_theme_font_size_override("normal_font_size", 24)
-	output_log.add_theme_font_size_override("bold_font_size", 24)
-	output_log.add_theme_font_override("normal_font", custom_font)
-	output_log.add_theme_font_override("bold_font", custom_font)
-	vbox.add_child(output_log)
-	
-	# --- 底部输入区 (巨型物理按钮，专治 Web/手机端顽疾) ---
+	# --- 顶部输入区 (移至上方以彻底规避手机底栏遮挡) ---
 	var input_area = VBoxContainer.new()
 	input_area.add_theme_constant_override("separation", 15)
 	vbox.add_child(input_area)
@@ -254,6 +217,43 @@ func _build_ui() -> void:
 	# 点击按钮时，主动提取文本框里的内容走提交逻辑
 	send_btn.pressed.connect(func(): _on_input_submitted(input_field.text))
 	btn_box.add_child(send_btn)
+	
+	# --- 角色图鉴弹窗 ---
+	stats_window = Window.new()
+	stats_window.title = "系统后台面板 - 角色状态档案"
+	stats_window.size = Vector2i(800, 600)
+	stats_window.visible = false
+	stats_window.exclusive = true
+	stats_window.close_requested.connect(func(): stats_window.hide())
+	add_child(stats_window)
+	
+	var scroll = ScrollContainer.new()
+	scroll.set_anchors_preset(PRESET_FULL_RECT)
+	stats_window.add_child(scroll)
+	
+	stats_content = RichTextLabel.new()
+	stats_content.bbcode_enabled = true
+	stats_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stats_content.custom_minimum_size = Vector2(780, 0)
+	stats_content.add_theme_font_size_override("normal_font_size", 20)
+	stats_content.add_theme_font_size_override("bold_font_size", 20)
+	stats_content.add_theme_font_override("normal_font", custom_font)
+	stats_content.add_theme_font_override("bold_font", custom_font)
+	scroll.add_child(stats_content)
+	
+	# 输出框 (RichTextLabel)
+	output_log = RichTextLabel.new()
+	output_log.bbcode_enabled = true
+	output_log.scroll_following = true
+	output_log.selection_enabled = true # 允许玩家使用鼠标拖拽选中文字
+	output_log.context_menu_enabled = true # 允许玩家右键呼出复制菜单
+	output_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	output_log.add_theme_font_size_override("normal_font_size", 24)
+	output_log.add_theme_font_size_override("bold_font_size", 24)
+	output_log.add_theme_font_override("normal_font", custom_font)
+	output_log.add_theme_font_override("bold_font", custom_font)
+	vbox.add_child(output_log)
 	
 	# 启动后自动聚焦
 	input_field.grab_focus()
