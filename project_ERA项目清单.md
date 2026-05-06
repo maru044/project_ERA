@@ -32,6 +32,7 @@
 * `res://Scripts/Systems/SimulationEngine.gd`
   - **功能**: 本地算数“脏活”执行器与检定中心。在上午和下午的一帧内，根据 TaskManager 指令和角色属性抛暗骰（d100对抗判定）。
   - **核心逻辑**: 执行多重高潮检定与寸止状态管理；判定成功则给予高额 Exp 奖励（包括教养/禁欲指令导致的负向降级扣减），失败则增加负面情绪，最终产出干涩的数据变更日志。
+  - **安全防火墙 (Stat Validation)**: 强制校验 LLM 传来的 `check_stat` 等键名是否存在于系统字典，并对 `exp` 奖励强制 `clamp()` 封顶，严防数值溢出。
 
 ---
 
@@ -48,6 +49,9 @@
 * `res://Scripts/Network/ToolRegistry.gd`
   - **功能**: 工具注册与提取枢纽（已从原生 Function Calling 进化为正则匹配器）。
   - **工作流**: 拦截 LLM 返回的 `<content>` 文本。如果文本内包含预定义的宏标签（如 ````json [任务数组] ```` 或 `[STAT_CHANGE: lust +10]`），引擎利用正则表达式强行抠出数据并转交给对应 Manager 运行。
+    1. `parse_and_assign_tasks`: 接收玩家在任意阶段的自然语言意图，解析并返回一个包含受影响角色及其对应的**动态底层操作指令数组**（包含检定因子、收益因子与难度修饰）的 JSON 结构。彻底取代传统死板的“套餐”指令库。
+    2. `generate_stage_reports`: 在任何需要结算的阶段，批量传入干瘪的后台推演数据，返回带有 Custom Tags 风味的文字报告。
+  - **路由逻辑**: 解析 LLM 返回的数组，动态映射到 `SimulationEngine` 的通用判定核心进行暗骰结算，执行后强制终止，进入下一次 Godot 挂机推演。
 * `res://Scripts/Systems/EventGenerator.gd`
   - **功能**: 批量打包器（Batch Processor）。在中午干预节点和夜晚结算节点，收集 `SimulationEngine` 产出的原始变更和角色的 Custom Tags，组装成超级 Prompt 一次性发给 LLM，要求在单一 JSON 内返回事件判定、属性修正和表现层文本。
 

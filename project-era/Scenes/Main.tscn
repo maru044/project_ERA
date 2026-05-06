@@ -1,8 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://df2mwb72u4p8s"]
+[gd_scene format=3 uid="uid://df2mwb72u4p8s"]
 
-[ext_resource type="Script" path="res://Scripts/UI/ConsoleCLI.gd" id="1_4n2xj"]
+[ext_resource type="Script" uid="uid://dloetpdmpxl46" path="res://Scripts/UI/ConsoleCLI.gd" id="1_4n2xj"]
 
-[node name="ConsoleCLI" type="Control"]
+[node name="ConsoleCLI" type="Control" unique_id=1668766086]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0

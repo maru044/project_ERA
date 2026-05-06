@@ -8,6 +8,9 @@ extends Control
 
 var output_log: RichTextLabel
 var input_field: LineEdit
+var time_label: RichTextLabel
+var stats_window: Window
+var stats_content: RichTextLabel
 var llm_client: LLMClient
 var char_manager: CharacterManager
 var task_manager: TaskManager
@@ -16,6 +19,11 @@ var tool_registry: ToolRegistry
 # 简单的状态机
 enum AppState { SETUP_URL, SETUP_KEY, SETUP_MODEL, IDLE, WAITING_FOR_LLM }
 var current_state: AppState = AppState.SETUP_URL
+
+# 时间轴变量
+var current_day: int = 1
+var time_phase: int = 0
+const PHASES = ["☀️ 清晨 (任务分配)", "🕛 上午 (后台推演)", "🍴 中午 (中场干预)", "🌇 下午 (后台推演)", "🌙 傍晚 (战报结算)", "🍷 深夜 (夜伽沙盒)"]
 
 # 暂存的配置
 var temp_url: String = "https://gcli.ggchan.dev/v1/chat/completions" # 默认填入公益站代理后缀
@@ -137,10 +145,58 @@ func _build_ui() -> void:
 	margins.add_theme_constant_override("margin_left", 20)
 	margins.add_theme_constant_override("margin_right", 20)
 	margins.add_theme_constant_override("margin_top", 20)
-	margins.add_theme_constant_override("margin_bottom", 20)
+	margins.add_theme_constant_override("margin_bottom", 100) # [Web/手机端安全区] 强行留白，防底栏遮挡输入框
 	margins.set_anchors_preset(PRESET_FULL_RECT)
 	margins.add_child(vbox)
 	add_child(margins)
+	
+	# --- 加载全局字体 ---
+	var custom_font = load("res://Fonts/SmileySans-Oblique.otf")
+
+	# --- 顶部状态栏 ---
+	var header_box = HBoxContainer.new()
+	vbox.add_child(header_box)
+	
+	time_label = RichTextLabel.new()
+	time_label.bbcode_enabled = true
+	time_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	time_label.custom_minimum_size.y = 40
+	time_label.add_theme_font_size_override("normal_font_size", 22)
+	time_label.add_theme_font_size_override("bold_font_size", 22)
+	time_label.add_theme_font_override("normal_font", custom_font)
+	time_label.add_theme_font_override("bold_font", custom_font)
+	header_box.add_child(time_label)
+	
+	var roster_btn = Button.new()
+	roster_btn.text = " 📋 查看后宫状态 "
+	roster_btn.add_theme_font_size_override("font_size", 22)
+	roster_btn.add_theme_font_override("font", custom_font)
+	roster_btn.pressed.connect(_on_roster_button_pressed)
+	header_box.add_child(roster_btn)
+	
+	# --- 角色图鉴弹窗 ---
+	stats_window = Window.new()
+	stats_window.title = "系统后台面板 - 角色状态档案"
+	stats_window.size = Vector2i(800, 600)
+	stats_window.visible = false
+	stats_window.exclusive = true
+	stats_window.close_requested.connect(func(): stats_window.hide())
+	add_child(stats_window)
+	
+	var scroll = ScrollContainer.new()
+	scroll.set_anchors_preset(PRESET_FULL_RECT)
+	stats_window.add_child(scroll)
+	
+	stats_content = RichTextLabel.new()
+	stats_content.bbcode_enabled = true
+	stats_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stats_content.custom_minimum_size = Vector2(780, 0)
+	stats_content.add_theme_font_size_override("normal_font_size", 20)
+	stats_content.add_theme_font_size_override("bold_font_size", 20)
+	stats_content.add_theme_font_override("normal_font", custom_font)
+	stats_content.add_theme_font_override("bold_font", custom_font)
+	scroll.add_child(stats_content)
 	
 	# 输出框 (RichTextLabel)
 	output_log = RichTextLabel.new()
@@ -149,16 +205,55 @@ func _build_ui() -> void:
 	output_log.selection_enabled = true # 允许玩家使用鼠标拖拽选中文字
 	output_log.context_menu_enabled = true # 允许玩家右键呼出复制菜单
 	output_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	output_log.add_theme_font_size_override("normal_font_size", 16)
+	output_log.add_theme_font_size_override("normal_font_size", 24)
+	output_log.add_theme_font_size_override("bold_font_size", 24)
+	output_log.add_theme_font_override("normal_font", custom_font)
+	output_log.add_theme_font_override("bold_font", custom_font)
 	vbox.add_child(output_log)
 	
-	# 输入框 (LineEdit)
+	# --- 底部输入区 (巨型物理按钮，专治 Web/手机端顽疾) ---
+	var input_area = VBoxContainer.new()
+	input_area.add_theme_constant_override("separation", 15)
+	vbox.add_child(input_area)
+	
+	# 第一行：极宽极高的输入框
 	input_field = LineEdit.new()
-	input_field.add_theme_font_size_override("font_size", 18)
+	input_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	input_field.custom_minimum_size.y = 70 # 确保手指极其好点击，呼出虚拟键盘
+	input_field.add_theme_font_size_override("font_size", 26)
 	input_field.add_theme_color_override("font_color", Color.GREEN_YELLOW)
-	input_field.placeholder_text = "在此输入指令，按 Enter 键发送..."
+	input_field.add_theme_font_override("font", custom_font)
+	input_field.placeholder_text = "在此输入指令，按下方按钮发送..."
+	# 保留键盘回车提交，以防 PC 玩家习惯
 	input_field.text_submitted.connect(_on_input_submitted)
-	vbox.add_child(input_field)
+	input_area.add_child(input_field)
+	
+	# 第二行：并排的巨型按钮组
+	var btn_box = HBoxContainer.new()
+	btn_box.add_theme_constant_override("separation", 20)
+	input_area.add_child(btn_box)
+	
+	# 专为 Web 端准备的极巨化“粘贴”按钮
+	var paste_btn = Button.new()
+	paste_btn.text = " 📋 粘贴内容 "
+	paste_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	paste_btn.custom_minimum_size.y = 70
+	paste_btn.add_theme_font_size_override("font_size", 26)
+	paste_btn.add_theme_font_override("font", custom_font)
+	paste_btn.pressed.connect(func(): input_field.text = DisplayServer.clipboard_get())
+	btn_box.add_child(paste_btn)
+	
+	# 手机端终极拯救者：物理“确认发送”按钮
+	var send_btn = Button.new()
+	send_btn.text = " 📤 确认发送 "
+	send_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	send_btn.custom_minimum_size.y = 70
+	send_btn.add_theme_font_size_override("font_size", 26)
+	send_btn.add_theme_color_override("font_color", Color.CYAN)
+	send_btn.add_theme_font_override("font", custom_font)
+	# 点击按钮时，主动提取文本框里的内容走提交逻辑
+	send_btn.pressed.connect(func(): _on_input_submitted(input_field.text))
+	btn_box.add_child(send_btn)
 	
 	# 启动后自动聚焦
 	input_field.grab_focus()
@@ -204,7 +299,8 @@ func _on_input_submitted(text: String) -> void:
 			_print_to_console("\n[color=green]>>> 系统初始化完毕 <<<[/color]")
 			_print_to_console("现在您可以直接输入指令。系统将向 LLM 发起【意图解析 (Assign)】。")
 			_print_to_console("或者输入 '/miku 你的问题' 来召唤管理员进行【元叙事交流 (Meta)】。")
-			input_field.placeholder_text = "输入游戏指令或 /miku ..."
+			_print_to_console("或者输入 '/chat 角色ID1,角色ID2... 你的话' 来直接与角色进行【沉浸扮演 (Roleplay)】。")
+			input_field.placeholder_text = "输入指令，或 /miku，或 /chat id1 ..."
 			current_state = AppState.IDLE
 			
 		AppState.IDLE:
@@ -213,6 +309,7 @@ func _on_input_submitted(text: String) -> void:
 			
 			var mode = LLMClient.MODE_ASSIGN
 			var send_text = text
+			var active_char_ids = [] # 记录当前需要参与互动的角色ID，为空则代表所有人
 			
 			# 如果指令以 /stats 开头，打印所有角色状态
 			if text.begins_with("/stats"):
@@ -229,19 +326,75 @@ func _on_input_submitted(text: String) -> void:
 				return
 
 			# 如果指令以 /miku 开头，进入元叙事聊天模式
-			if text.begins_with("/miku "):
+			elif text.begins_with("/miku "):
 				mode = LLMClient.MODE_META
 				send_text = text.substr(6)
+				
+			# 如果指令以 /chat 开头，进入角色扮演对话模式 (内存隔离关键)
+			elif text.begins_with("/chat "):
+				mode = LLMClient.MODE_ROLEPLAY
+				# 解析命令: /chat hina_01,chise_01 你好呀
+				var parts = text.substr(6).split(" ", false, 1)
+				if parts.size() > 0:
+					active_char_ids = parts[0].split(",")
+				if parts.size() > 1:
+					send_text = parts[1]
+				else:
+					send_text = "..." # 如果没写对话只@了人
 				
 			current_state = AppState.WAITING_FOR_LLM
 			_print_to_console("[color=gray]...正在请求外部接口 (RPM 控制中)...[/color]")
 			
-			# 组装上下文发送
+			# 组装上下文发送（严格的记忆隔离）
 			var context = {}
 			for char_data in char_manager.get_all_characters():
-				context[char_data.id] = char_data.get_prompt_context(false)
+				# 在分配模式和Miku模式下，系统能看到所有人的简略面板，但不一定带独占记忆
+				# 在扮演模式下，只有被点名的 active_char_ids 才会被送入上下文，彻底防串戏
+				if mode == LLMClient.MODE_ROLEPLAY:
+					if char_data.id in active_char_ids:
+						context[char_data.id] = char_data.get_prompt_context(true) # 携带独占记忆
+				else:
+					# Assign 模式全看，但无独占记忆；Meta 模式全看
+					context[char_data.id] = char_data.get_prompt_context(false)
 				
 			llm_client.send_request(mode, send_text, context)
+
+# ---------------------------------------------------------
+# 时间推进与顶部横幅更新
+# ---------------------------------------------------------
+func _update_header() -> void:
+	var phase_name = PHASES[time_phase]
+	time_label.text = "[color=yellow][b]【 第 " + str(current_day) + " 天 | " + phase_name + " 】[/b][/color]"
+
+func _advance_time() -> void:
+	time_phase += 1
+	if time_phase >= PHASES.size():
+		time_phase = 0
+		current_day += 1
+	_update_header()
+
+# ---------------------------------------------------------
+# 角色图鉴弹窗刷新
+# ---------------------------------------------------------
+func _on_roster_button_pressed() -> void:
+	stats_window.popup_centered()
+	var bbcode = "[center][b]=== 系统运行中角色名单与属性总览 ===[/b][/center]\n\n"
+	
+	for char_data in char_manager.get_all_characters():
+		bbcode += "[b]" + char_data.char_name + "[/b] (ID: " + char_data.id + ")"
+		
+		# 判断是否可以做调教师 (Devotion >= 50)
+		if char_data.stats["devotion"]["level"] >= 50:
+			bbcode += " [color=pink][b](⭐可担任调教师)[/b][/color]"
+		bbcode += "\n"
+		
+		bbcode += "   [color=gray]羞耻心:[/color] LV " + str(char_data.stats["shame"]["level"]) + " (" + str(char_data.stats["shame"]["exp"]) + " Exp)\n"
+		bbcode += "   [color=gray]欲  望:[/color] LV " + str(char_data.stats["lust"]["level"]) + " (" + str(char_data.stats["lust"]["exp"]) + " Exp)\n"
+		bbcode += "   [color=gray]接受度:[/color] LV " + str(char_data.stats["devotion"]["level"]) + " (" + str(char_data.stats["devotion"]["exp"]) + " Exp)\n"
+		bbcode += "   [color=gray]C感觉:[/color] LV " + str(char_data.stats["sensory_C"]["level"]) + " (" + str(char_data.stats["sensory_C"]["exp"]) + " Exp)\n"
+		bbcode += "   [color=gray]Tags:[/color] [color=cyan]" + str(char_data.custom_tags) + "[/color]\n\n"
+		
+	stats_content.text = bbcode
 
 # ---------------------------------------------------------
 # 回调：LLM 处理完毕
@@ -263,6 +416,9 @@ func _on_llm_reply(reply_text: String) -> void:
 			_print_to_console("[color=gray]" + l + "[/color]")
 		_print_to_console("[color=yellow]--- 推演完毕 ---[/color]\n")
 		sim_engine.queue_free()
+		
+		# 推演完成后自动推进时间阶段
+		_advance_time()
 
 func _on_llm_error(err_msg: String) -> void:
 	current_state = AppState.IDLE

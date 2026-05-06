@@ -7,15 +7,6 @@ extends Node
 # 管理临时快感槽，以及结算多重高潮。绝对不依赖 LLM 请求。
 # ==============================================================================
 
-# --- 指令类型常量 (用于判定难度) ---
-enum CommandType {
-	ICE_BREAK,    # 破冰指令 (如: 爱抚、舔阴。带有高顺从加值，无视大部分羞耻心)
-	NORMAL,       # 进阶指令 (如: 后庭开发、抽插。需要顺从与欲望对抗羞耻心)
-	ABYSS,        # 深渊指令 (如: 极端露出、寸止地狱。带有极大惩罚，必须多重高潮或破防才可成功)
-	FINISHER,     # 终结指令 (如: 允许高潮。用于引爆当前回合累积的临时快感)
-	REVERSE       # 逆向指令 (如: 禁欲、教养。用于降低欲望或提升羞耻心)
-}
-
 # --- 模拟运行中的“本回合临时快感槽” ---
 # 在单次回合 (如: 上午的 10 连指令) 结束后会被清空或结算
 var temp_pleasure_pool: Dictionary = {
@@ -40,7 +31,7 @@ func process_task_sequence(target: CharacterData, instructor: CharacterData, act
 	for action in actions:
 		var result_log = _execute_single_action(target, instructor, action)
 		turn_logs.append(result_log)
-		if action.get("type", CommandType.NORMAL) == CommandType.FINISHER:
+		if action.get("type", "NORMAL") == "FINISHER":
 			has_finisher = true
 			
 	# 如果本回合没有主动下达【允许高潮】的指令，但快感已经满了
@@ -85,72 +76,75 @@ func _process_auto_orgasm(target: CharacterData) -> String:
 	return log_str
 
 # ---------------------------------------------------------
-# 单一指令执行与 COC 检定核心逻辑
+# 单一指令执行与 COC 检定核心逻辑 (动态解析版本)
 # ---------------------------------------------------------
 func _execute_single_action(target: CharacterData, instructor: CharacterData, action: Dictionary) -> String:
-	var cmd_name = action.get("name", "Unknown Action")
-	var cmd_type = action.get("type", CommandType.NORMAL)
-	var target_part = action.get("target_part", "") # 比如 "sensory_C"
+	var cmd_name = action.get("action_flavor", "未知动作")
+	var cmd_type = action.get("type", "NORMAL")
 	
 	# 1. 终结指令：引爆多重高潮
-	if cmd_type == CommandType.FINISHER:
+	if cmd_type == "FINISHER":
 		return _process_orgasm_finisher(target)
-		
+	
+	# 安全检查：如果 LLM 给的 key 不是硬指标，兜底为 yuri_obedience
+	var check_stat = action.get("check_stat", "yuri_obedience")
+	var reward_stat = action.get("reward_stat", "yuri_obedience")
+	
+	if not CharacterData.STAT_KEYS.has(check_stat): check_stat = "yuri_obedience"
+	if not CharacterData.STAT_KEYS.has(reward_stat): reward_stat = "yuri_obedience"
+
 	# 2. 逆向指令：教养与禁欲
-	if cmd_type == CommandType.REVERSE:
-		return _process_reverse_training(target, action)
+	if cmd_type == "REVERSE":
+		var reduce_amount = action.get("difficulty_modifier", 0) # 借用 difficulty_modifier 字段当做扣减值
+		# 限制逆向扣除在合理范围内
+		reduce_amount = clamp(abs(int(reduce_amount)), 10, 500)
+		target.reduce_exp(check_stat, reduce_amount)
+		return "[" + cmd_name + "] 成功执行逆向调教。目标属性 " + check_stat + " 经验扣减。 [" + check_stat + " -" + str(reduce_amount) + " Exp]"
 
 	# ================= COC 对抗暗骰计算 =================
-	# 基底成功率 = 百合顺从 + 欲望 - 羞耻心 (按面板Level计算，1 Level算 1 点权重)
-	var base_success = target.stats["yuri_obedience"]["level"] \
-					 + target.stats["lust"]["level"] \
-					 - target.stats["shame"]["level"]
+	var ob_lvl = target.stats["yuri_obedience"]["level"]
+	var lust_lvl = target.stats["lust"]["level"]
+	var shame_lvl = target.stats["shame"]["level"]
+	
+	# 基底成功率 = 百合顺从 + 欲望 - 羞耻心
+	var base_success = ob_lvl + lust_lvl - shame_lvl
 					 
-	# 导师加成 (导师越强，越容易压制)
-	# 假设导师的指导技术被预先转换为了一个数值 (此处简化取 20 作为顶级导师加成)
 	var instructor_bonus = 20 if instructor != null else 0 
 	
-	# 指令特殊修正
-	var cmd_modifier = 0
-	match cmd_type:
-		CommandType.ICE_BREAK:
-			cmd_modifier = 50 # 破冰极易成功
-		CommandType.NORMAL:
-			cmd_modifier = 0
-		CommandType.ABYSS:
-			cmd_modifier = -50 # 深渊极难成功
-			
-	# 如果是针对特定部位的，加上目标部位的感觉 Level 作为加成
-	var part_bonus = 0
-	if target_part != "" and target.stats.has(target_part):
-		part_bonus = target.stats[target_part]["level"]
-		
-	# 最终判定值 (基础 50%，加上所有修正)
-	var final_chance = 50 + base_success + instructor_bonus + cmd_modifier + part_bonus
-	final_chance = clamp(final_chance, 5, 95) # 保留大成功和大失败的可能
+	# LLM 自定义的难度修正 (强制封顶 -50 到 50 之间防乱填)
+	var cmd_modifier = clamp(int(action.get("difficulty_modifier", 0)), -50, 50)
 	
-	# 掷骰子 d100
+	# 目标部位/属性的感觉 Level 作为加成
+	var part_bonus = target.stats[check_stat]["level"]
+		
+	# 最终判定值
+	var final_chance_raw = 50 + base_success + instructor_bonus + cmd_modifier + part_bonus
+	var final_chance = clamp(final_chance_raw, 5, 95) 
+	
 	var roll = randi() % 100 + 1 
 	var is_success = roll <= final_chance
-	var is_critical = roll <= final_chance / 5 # 暴击率是成功率的 1/5
+	var is_critical = roll <= final_chance / 5 
 	
-	var log_str = "[" + cmd_name + "] 判定: " + str(final_chance) + "% | 掷骰: " + str(roll) + " -> "
+	var log_str = "\n[color=lightblue][" + cmd_name + "][/color] 正在进行 COC 判定...\n"
+	log_str += "  > 计算过程: 基础成功率(50) + 顺从加值(" + str(ob_lvl) + ") + 欲望加值(" + str(lust_lvl) + ") - 羞耻心减值(" + str(shame_lvl) + ")"
+	log_str += " + 导师技巧压制(" + str(instructor_bonus) + ") + LLM动作难度修正(" + str(cmd_modifier) + ") + 部位等级加成(" + str(part_bonus) + ")\n"
+	log_str += "  > = 最终成功率 (" + str(final_chance_raw) + "% -> 触发保底 " + str(final_chance) + "%)\n"
+	log_str += "  > 判定: " + str(final_chance) + "% | 掷骰: " + str(roll) + " -> "
 	
 	# ================= 结算结果 =================
 	if is_success:
 		log_str += "成功"
 		if is_critical: log_str += "(大成功!)"
 		
-		# [修正] 成功后立刻获得目标部位的基础经验，即使最后没高潮也不亏
-		if target_part != "":
-			var base_part_exp = 100 if not is_critical else 300
-			target.add_exp(target_part, base_part_exp)
-			log_str += " [" + target_part + " +" + str(base_part_exp) + " Exp]"
-			
-			# 成功积累临时快感 (存入寸止池)
-			var pleasure_gain = 30 if not is_critical else 60
-			_add_temp_pleasure(target, target_part, pleasure_gain)
-			log_str += " 临时快感提升."
+		# 成功后立刻获得目标部位的基础经验，即使最后没高潮也不亏
+		var base_part_exp = 100 if not is_critical else 300
+		target.add_exp(reward_stat, base_part_exp)
+		log_str += " [" + reward_stat + " +" + str(base_part_exp) + " Exp]"
+		
+		# 成功积累临时快感 (存入寸止池)
+		var pleasure_gain = 30 if not is_critical else 60
+		_add_temp_pleasure(target, reward_stat, pleasure_gain)
+		log_str += " 临时快感提升."
 			
 		# 获得底层的真实Exp (顺从和欲望)
 		var ob_exp = 10 if not is_critical else 30
@@ -161,7 +155,6 @@ func _execute_single_action(target: CharacterData, instructor: CharacterData, ac
 		
 	else:
 		log_str += "失败"
-		# 失败惩罚：增加反抗度
 		target.add_exp("rebellion", 20)
 		log_str += " 角色产生抗拒. [rebellion +20 Exp]"
 		

@@ -56,14 +56,20 @@ func _init() -> void:
 	# 模拟 LLM 返回了一个批量任务分配 JSON 数组
 	var mock_llm_response = [
 		{
-			"instructor": "hina_01",
-			"target": "chise_01",
-			"macro_strategy": "oral_training"
+			"instructor_id": "hina_01",
+			"target_id": "chise_01",
+			"action_sequence": [
+				{"action_flavor": "强制脱衣", "check_stat": "shame", "reward_stat": "yuri_obedience", "difficulty_modifier": -20},
+				{"action_flavor": "强迫含住", "check_stat": "sensory_M", "reward_stat": "sensory_M", "difficulty_modifier": -10},
+				{"action_flavor": "允许高潮", "type": "FINISHER"}
+			]
 		},
 		{
-			"instructor": "none",
-			"target": "char_test_01", # 这是上面 Mod 测加载的 Miku
-			"macro_strategy": "solitary_confinement"
+			"instructor_id": "none",
+			"target_id": "char_test_01", # 这是上面 Mod 测加载的 Miku
+			"action_sequence": [
+				{"action_flavor": "抄写女德", "type": "REVERSE", "check_stat": "lust", "difficulty_modifier": 200}
+			]
 		}
 	]
 	
