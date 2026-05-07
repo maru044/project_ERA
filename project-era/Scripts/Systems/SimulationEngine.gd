@@ -20,7 +20,8 @@ var temp_pleasure_pool: Dictionary = {
 # ---------------------------------------------------------
 func process_task_sequence(target: CharacterData, instructor: CharacterData, actions: Array[Dictionary]) -> Array[String]:
 	var turn_logs: Array[String] = []
-	turn_logs.append("--- 开始对 " + target.char_name + " 进行回合连招调教 ---")
+	var inst_name = instructor.char_name if instructor != null else "无人/系统"
+	turn_logs.append("\n[color=yellow]=== [ " + inst_name + " ] 开始对 [ " + target.char_name + " ] 进行回合连招调教 ===[/color]")
 	
 	# 重置临时快感槽
 	for key in temp_pleasure_pool.keys():
@@ -41,7 +42,7 @@ func process_task_sequence(target: CharacterData, instructor: CharacterData, act
 		if auto_log != "":
 			turn_logs.append(auto_log)
 			
-	turn_logs.append("--- 回合调教结束 ---")
+	turn_logs.append("[color=yellow]=== [ " + inst_name + " ] 对 [ " + target.char_name + " ] 的调教回合结束 ===[/color]\n")
 	return turn_logs
 
 # ---------------------------------------------------------
@@ -89,9 +90,11 @@ func _execute_single_action(target: CharacterData, instructor: CharacterData, ac
 	# 安全检查：如果 LLM 给的 key 不是硬指标，兜底为 yuri_obedience
 	var check_stat = action.get("check_stat", "yuri_obedience")
 	var reward_stat = action.get("reward_stat", "yuri_obedience")
+	var defend_stat = action.get("defend_stat", "shame") # 可以是 shame, rebellion, 或者 none
 	
 	if not CharacterData.STAT_KEYS.has(check_stat): check_stat = "yuri_obedience"
 	if not CharacterData.STAT_KEYS.has(reward_stat): reward_stat = "yuri_obedience"
+	if defend_stat != "none" and not CharacterData.STAT_KEYS.has(defend_stat): defend_stat = "shame"
 
 	# 2. 逆向指令：教养与禁欲
 	if cmd_type == "REVERSE":
@@ -104,10 +107,14 @@ func _execute_single_action(target: CharacterData, instructor: CharacterData, ac
 	# ================= COC 对抗暗骰计算 =================
 	var ob_lvl = target.stats["yuri_obedience"]["level"]
 	var lust_lvl = target.stats["lust"]["level"]
-	var shame_lvl = target.stats["shame"]["level"]
 	
-	# 基底成功率 = 百合顺从 + 欲望 - 羞耻心
-	var base_success = ob_lvl + lust_lvl - shame_lvl
+	# 根据 LLM 决定的 defend_stat 动态提取防御属性减值
+	var defend_lvl = 0
+	if defend_stat != "none":
+		defend_lvl = target.stats[defend_stat]["level"]
+	
+	# 基底成功率 = 百合顺从 + 欲望 - 防御属性
+	var base_success = ob_lvl + lust_lvl - defend_lvl
 					 
 	var instructor_bonus = 20 if instructor != null else 0 
 	
@@ -126,9 +133,9 @@ func _execute_single_action(target: CharacterData, instructor: CharacterData, ac
 	var is_critical = roll <= final_chance / 5 
 	
 	var log_str = "\n[color=lightblue][" + cmd_name + "][/color] 正在进行 COC 判定...\n"
-	log_str += "  > 计算过程: 基础成功率(50) + 顺从加值(" + str(ob_lvl) + ") + 欲望加值(" + str(lust_lvl) + ") - 羞耻心减值(" + str(shame_lvl) + ")"
-	log_str += " + 导师技巧压制(" + str(instructor_bonus) + ") + LLM动作难度修正(" + str(cmd_modifier) + ") + 部位等级加成(" + str(part_bonus) + ")\n"
-	log_str += "  > = 最终成功率 (" + str(final_chance_raw) + "% -> 触发保底 " + str(final_chance) + "%)\n"
+	log_str += "  > 计算过程: 基础(50) + 顺从(" + str(ob_lvl) + ") + 欲望(" + str(lust_lvl) + ") - 阻力[" + defend_stat + "](" + str(defend_lvl) + ")"
+	log_str += " + 导师技巧(" + str(instructor_bonus) + ") + 动作修正(" + str(cmd_modifier) + ") + 部位加成(" + str(part_bonus) + ")\n"
+	log_str += "  > = 理论成功率 (" + str(final_chance_raw) + "%) -> 实际补正后 (" + str(final_chance) + "%)\n"
 	log_str += "  > 判定: " + str(final_chance) + "% | 掷骰: " + str(roll) + " -> "
 	
 	# ================= 结算结果 =================

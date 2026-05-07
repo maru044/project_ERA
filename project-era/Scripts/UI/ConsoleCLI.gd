@@ -174,74 +174,6 @@ func _build_ui() -> void:
 	roster_btn.pressed.connect(_on_roster_button_pressed)
 	header_box.add_child(roster_btn)
 	
-	# --- 顶部输入区 (移至上方以彻底规避手机底栏遮挡) ---
-	var input_area = VBoxContainer.new()
-	input_area.add_theme_constant_override("separation", 15)
-	vbox.add_child(input_area)
-	
-	# 第一行：极宽极高的输入框
-	input_field = LineEdit.new()
-	input_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	input_field.custom_minimum_size.y = 70 # 确保手指极其好点击，呼出虚拟键盘
-	input_field.add_theme_font_size_override("font_size", 26)
-	input_field.add_theme_color_override("font_color", Color.GREEN_YELLOW)
-	input_field.add_theme_font_override("font", custom_font)
-	input_field.placeholder_text = "在此输入指令，按下方按钮发送..."
-	# 保留键盘回车提交，以防 PC 玩家习惯
-	input_field.text_submitted.connect(_on_input_submitted)
-	input_area.add_child(input_field)
-	
-	# 第二行：并排的巨型按钮组
-	var btn_box = HBoxContainer.new()
-	btn_box.add_theme_constant_override("separation", 20)
-	input_area.add_child(btn_box)
-	
-	# 专为 Web 端准备的极巨化“粘贴”按钮
-	var paste_btn = Button.new()
-	paste_btn.text = " 📋 粘贴内容 "
-	paste_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	paste_btn.custom_minimum_size.y = 70
-	paste_btn.add_theme_font_size_override("font_size", 26)
-	paste_btn.add_theme_font_override("font", custom_font)
-	paste_btn.pressed.connect(func(): input_field.text = DisplayServer.clipboard_get())
-	btn_box.add_child(paste_btn)
-	
-	# 手机端终极拯救者：物理“确认发送”按钮
-	var send_btn = Button.new()
-	send_btn.text = " 📤 确认发送 "
-	send_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	send_btn.custom_minimum_size.y = 70
-	send_btn.add_theme_font_size_override("font_size", 26)
-	send_btn.add_theme_color_override("font_color", Color.CYAN)
-	send_btn.add_theme_font_override("font", custom_font)
-	# 点击按钮时，主动提取文本框里的内容走提交逻辑
-	send_btn.pressed.connect(func(): _on_input_submitted(input_field.text))
-	btn_box.add_child(send_btn)
-	
-	# --- 角色图鉴弹窗 ---
-	stats_window = Window.new()
-	stats_window.title = "系统后台面板 - 角色状态档案"
-	stats_window.size = Vector2i(800, 600)
-	stats_window.visible = false
-	stats_window.exclusive = true
-	stats_window.close_requested.connect(func(): stats_window.hide())
-	add_child(stats_window)
-	
-	var scroll = ScrollContainer.new()
-	scroll.set_anchors_preset(PRESET_FULL_RECT)
-	stats_window.add_child(scroll)
-	
-	stats_content = RichTextLabel.new()
-	stats_content.bbcode_enabled = true
-	stats_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stats_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	stats_content.custom_minimum_size = Vector2(780, 0)
-	stats_content.add_theme_font_size_override("normal_font_size", 20)
-	stats_content.add_theme_font_size_override("bold_font_size", 20)
-	stats_content.add_theme_font_override("normal_font", custom_font)
-	stats_content.add_theme_font_override("bold_font", custom_font)
-	scroll.add_child(stats_content)
-	
 	# 输出框 (RichTextLabel)
 	output_log = RichTextLabel.new()
 	output_log.bbcode_enabled = true
@@ -254,6 +186,23 @@ func _build_ui() -> void:
 	output_log.add_theme_font_override("normal_font", custom_font)
 	output_log.add_theme_font_override("bold_font", custom_font)
 	vbox.add_child(output_log)
+	
+	# --- 底部输入区 ---
+	var input_area = VBoxContainer.new()
+	input_area.add_theme_constant_override("separation", 15)
+	vbox.add_child(input_area)
+	
+	# 极宽极高的输入框
+	input_field = LineEdit.new()
+	input_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	input_field.custom_minimum_size.y = 70 # 确保好点击
+	input_field.add_theme_font_size_override("font_size", 26)
+	input_field.add_theme_color_override("font_color", Color.GREEN_YELLOW)
+	input_field.add_theme_font_override("font", custom_font)
+	input_field.placeholder_text = "在此输入指令，按 Enter 键发送..."
+	# 回车提交 (PC端为主)
+	input_field.text_submitted.connect(_on_input_submitted)
+	input_area.add_child(input_field)
 	
 	# 启动后自动聚焦
 	input_field.grab_focus()
@@ -377,6 +326,34 @@ func _advance_time() -> void:
 # 角色图鉴弹窗刷新
 # ---------------------------------------------------------
 func _on_roster_button_pressed() -> void:
+	if stats_window == null or not is_instance_valid(stats_window):
+		push_warning("stats_window is null, rebuilding...")
+		# --- 角色图鉴弹窗 ---
+		stats_window = Window.new()
+		stats_window.title = "系统后台面板 - 角色状态档案"
+		stats_window.size = Vector2i(800, 600)
+		stats_window.visible = false
+		stats_window.exclusive = true
+		stats_window.close_requested.connect(func(): stats_window.hide())
+		add_child(stats_window)
+		
+		var scroll = ScrollContainer.new()
+		scroll.set_anchors_preset(PRESET_FULL_RECT)
+		stats_window.add_child(scroll)
+		
+		stats_content = RichTextLabel.new()
+		stats_content.bbcode_enabled = true
+		stats_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stats_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		stats_content.custom_minimum_size = Vector2(780, 0)
+		stats_content.add_theme_font_size_override("normal_font_size", 20)
+		stats_content.add_theme_font_size_override("bold_font_size", 20)
+		# 尝试获取已加载的字体
+		var custom_font = load("res://Fonts/SmileySans-Oblique.otf")
+		stats_content.add_theme_font_override("normal_font", custom_font)
+		stats_content.add_theme_font_override("bold_font", custom_font)
+		scroll.add_child(stats_content)
+		
 	stats_window.popup_centered()
 	var bbcode = "[center][b]=== 系统运行中角色名单与属性总览 ===[/b][/center]\n\n"
 	
