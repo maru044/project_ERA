@@ -25,10 +25,39 @@ var current_day: int = 1
 var time_phase: int = 0
 const PHASES = ["☀️ 清晨 (任务分配)", "🕛 上午 (后台推演)", "🍴 中午 (中场干预)", "🌇 下午 (后台推演)", "🌙 傍晚 (战报结算)", "🍷 深夜 (夜伽沙盒)"]
 
+# 系统日志存档，用于给大模型喂入当天发生的事件
+var daily_system_logs: Array[String] = []
+
+# 全局对话历史缓存池 (物理隔离记忆的关键)
+# 结构: [ {"role": "user/assistant", "content": "text", "participants": ["miku"] 或 ["hina_01", "chise_01"]}, ... ]
+var global_chat_pool: Array[Dictionary] = []
+
+# 暂存当前正在请求的模式与参与者，用于回调时压入历史
+var current_request_mode: String = ""
+var current_request_participants: Array = []
+
 # 暂存的配置
 var temp_url: String = "https://gcli.ggchan.dev/v1/chat/completions" # 默认填入公益站代理后缀
 var temp_key: String = ""
 var temp_model: String = "gemini-3.1-pro-preview"
+
+# --- 属性名中英文对照字典 ---
+const STAT_NAMES_CN = {
+	"devotion": "接受度",
+	"shame": "羞耻心",
+	"rebellion": "反抗度/傲娇",
+	"yuri_obedience": "百合顺从",
+	"lust": "欲望",
+	"sensory_M": "M感觉(嘴)",
+	"sensory_B": "B感觉(胸)",
+	"sensory_A": "A感觉(后庭)",
+	"sensory_C": "C感觉(阴蒂)",
+	"sensory_V": "V感觉(小穴)",
+	"sensory_P": "P感觉(肉棒)",
+	"exhibitionism": "露出癖",
+	"semen_addiction": "精液中毒",
+	"edging_control": "寸止忍耐"
+}
 
 func _ready() -> void:
 	# 动态构建 CLI UI
@@ -67,9 +96,8 @@ func _init_mock_characters() -> void:
 	hina.char_name = "日奈"
 	hina.stats["shame"]["level"] = 15
 	hina.stats["lust"]["level"] = 90
-	hina.stats["skill_oral"]["level"] = 80
-	hina.stats["sadism_femdom"]["level"] = 85
-	hina.custom_tags.assign(["风纪委员长", "小恶魔调教师", "对主人的命令绝对服从", "偶尔会撒娇"])
+	hina.stats["devotion"]["level"] = 90
+	hina.custom_tags.assign(["风纪委员长", "对主人的命令绝对服从", "偶尔会撒娇", "顶级口交技巧", "极端小恶魔施虐狂"])
 	char_manager.add_character(hina)
 	
 	var ako = CharacterData.new()
@@ -77,8 +105,8 @@ func _init_mock_characters() -> void:
 	ako.char_name = "亚子"
 	ako.stats["shame"]["level"] = 25
 	ako.stats["lust"]["level"] = 85
-	ako.stats["skill_oral"]["level"] = 75
-	ako.custom_tags.assign(["风纪委员", "侧乳暴露", "极度崇拜日奈", "隐性M", "项圈"])
+	ako.stats["devotion"]["level"] = 80
+	ako.custom_tags.assign(["风纪委员", "侧乳暴露", "极度崇拜日奈", "隐性M", "项圈", "精通指交与口交"])
 	char_manager.add_character(ako)
 
 	var iori = CharacterData.new()
@@ -86,8 +114,8 @@ func _init_mock_characters() -> void:
 	iori.char_name = "伊织"
 	iori.stats["shame"]["level"] = 35
 	iori.stats["lust"]["level"] = 75
-	iori.stats["skill_oral"]["level"] = 60
-	iori.custom_tags.assign(["风纪委员", "银色双马尾", "傲娇", "足控诱惑", "经常吃瘪"])
+	iori.stats["devotion"]["level"] = 70
+	iori.custom_tags.assign(["风纪委员", "银色双马尾", "傲娇", "足控诱惑", "经常吃瘪", "熟练的骑乘技巧"])
 	char_manager.add_character(iori)
 
 	var chinatsu = CharacterData.new()
@@ -95,8 +123,8 @@ func _init_mock_characters() -> void:
 	chinatsu.char_name = "千夏"
 	chinatsu.stats["shame"]["level"] = 20
 	chinatsu.stats["lust"]["level"] = 80
-	chinatsu.stats["skill_oral"]["level"] = 70
-	chinatsu.custom_tags.assign(["风纪委员", "温泉合宿", "知性", "理疗师"])
+	chinatsu.stats["devotion"]["level"] = 85
+	chinatsu.custom_tags.assign(["风纪委员", "温泉合宿", "知性", "理疗师", "精通各种体位"])
 	char_manager.add_character(chinatsu)
 
 	# ==========================================
@@ -265,11 +293,13 @@ func _on_input_submitted(text: String) -> void:
 				_print_to_console("[color=yellow]=== 当前系统内所有角色面板数据 ===[/color]")
 				for char_data in char_manager.get_all_characters():
 					var msg = char_data.char_name + " (ID: " + char_data.id + ")\n"
-					msg += "   [羞耻心]: LV " + str(char_data.stats["shame"]["level"]) + " (EXP: " + str(char_data.stats["shame"]["exp"]) + ")\n"
-					msg += "   [欲  望]: LV " + str(char_data.stats["lust"]["level"]) + " (EXP: " + str(char_data.stats["lust"]["exp"]) + ")\n"
-					msg += "   [接受度]: LV " + str(char_data.stats["devotion"]["level"]) + " (EXP: " + str(char_data.stats["devotion"]["exp"]) + ")\n"
-					msg += "   [C 感觉]: LV " + str(char_data.stats["sensory_C"]["level"]) + " (EXP: " + str(char_data.stats["sensory_C"]["exp"]) + ")\n"
-					msg += "   [Tags]: " + str(char_data.custom_tags)
+					# 动态循环打印所有的硬性指标
+					for stat_key in CharacterData.STAT_KEYS:
+						var lvl = char_data.stats[stat_key]["level"]
+						var exp = char_data.stats[stat_key]["exp"]
+						msg += "   [color=gray]" + stat_key + ":[/color] LV " + str(lvl) + " (" + str(exp) + " Exp)\n"
+						
+					msg += "   [color=gray]Tags:[/color] [color=cyan]" + str(char_data.custom_tags) + "[/color]\n\n"
 					_print_to_console(msg)
 				current_state = AppState.IDLE
 				return
@@ -278,6 +308,7 @@ func _on_input_submitted(text: String) -> void:
 			elif text.begins_with("/miku "):
 				mode = LLMClient.MODE_META
 				send_text = text.substr(6)
+				active_char_ids = ["miku_sys"]
 				
 			# 如果指令以 /chat 开头，进入角色扮演对话模式 (内存隔离关键)
 			elif text.begins_with("/chat "):
@@ -285,7 +316,7 @@ func _on_input_submitted(text: String) -> void:
 				# 解析命令: /chat hina_01,chise_01 你好呀
 				var parts = text.substr(6).split(" ", false, 1)
 				if parts.size() > 0:
-					active_char_ids = parts[0].split(",")
+					active_char_ids = Array(parts[0].split(","))
 				if parts.size() > 1:
 					send_text = parts[1]
 				else:
@@ -294,19 +325,69 @@ func _on_input_submitted(text: String) -> void:
 			current_state = AppState.WAITING_FOR_LLM
 			_print_to_console("[color=gray]...正在请求外部接口 (RPM 控制中)...[/color]")
 			
-			# 组装上下文发送（严格的记忆隔离）
-			var context = {}
+			# 暂存请求状态，供回调函数存入历史
+			current_request_mode = mode
+			current_request_participants = active_char_ids
+			
+			# 如果是角色扮演或Miku聊天，把用户的话存入全局记忆池
+			if mode == LLMClient.MODE_ROLEPLAY or mode == LLMClient.MODE_META:
+				global_chat_pool.append({
+					"role": "user",
+					"content": send_text,
+					"participants": active_char_ids.duplicate()
+				})
+			
+			# 组装上下文发送（严格的记忆隔离与日记互通）
+			var context = {
+				"roster_data": {},
+				"daily_logs": []
+			}
+			
+			var history_messages = []
+			
 			for char_data in char_manager.get_all_characters():
 				# 在分配模式和Miku模式下，系统能看到所有人的简略面板，但不一定带独占记忆
 				# 在扮演模式下，只有被点名的 active_char_ids 才会被送入上下文，彻底防串戏
 				if mode == LLMClient.MODE_ROLEPLAY:
-					if char_data.id in active_char_ids:
-						context[char_data.id] = char_data.get_prompt_context(true) # 携带独占记忆
+					if active_char_ids.has(char_data.id):
+						context["roster_data"][char_data.id] = char_data.get_prompt_context(true) # 携带独占记忆
 				else:
 					# Assign 模式全看，但无独占记忆；Meta 模式全看
-					context[char_data.id] = char_data.get_prompt_context(false)
+					context["roster_data"][char_data.id] = char_data.get_prompt_context(false)
+					
+			if mode == LLMClient.MODE_META:
+				context["daily_logs"] = daily_system_logs
+				# 提取 Miku 的专属对话历史
+				for msg in global_chat_pool:
+					if msg["participants"].has("miku_sys"):
+						history_messages.append({"role": msg["role"], "content": msg["content"]})
+						
+			elif mode == LLMClient.MODE_ROLEPLAY:
+				var filtered_logs = []
+				for l in daily_system_logs:
+					var relevant = false
+					for c_id in active_char_ids:
+						var c = char_manager.get_character(c_id)
+						if c and l.find(c.char_name) != -1:
+							relevant = true
+					if relevant:
+						filtered_logs.append(l)
+				context["daily_logs"] = filtered_logs
 				
-			llm_client.send_request(mode, send_text, context)
+				# 提取这些角色的交集历史对话
+				for msg in global_chat_pool:
+					var is_relevant = false
+					for p in active_char_ids:
+						if msg["participants"].has(p):
+							is_relevant = true
+					if is_relevant and not msg["participants"].has("miku_sys"):
+						history_messages.append({"role": msg["role"], "content": msg["content"]})
+				
+			# 为了防止 Token 爆炸，限制历史记录最大条数 (比如取最后 10 条)
+			if history_messages.size() > 10:
+				history_messages = history_messages.slice(-10)
+				
+			llm_client.send_request(mode, send_text, context, history_messages)
 
 # ---------------------------------------------------------
 # 时间推进与顶部横幅更新
@@ -320,6 +401,7 @@ func _advance_time() -> void:
 	if time_phase >= PHASES.size():
 		time_phase = 0
 		current_day += 1
+		daily_system_logs.clear() # 跨天清空日志
 	_update_header()
 
 # ---------------------------------------------------------
@@ -365,10 +447,12 @@ func _on_roster_button_pressed() -> void:
 			bbcode += " [color=pink][b](⭐可担任调教师)[/b][/color]"
 		bbcode += "\n"
 		
-		bbcode += "   [color=gray]羞耻心:[/color] LV " + str(char_data.stats["shame"]["level"]) + " (" + str(char_data.stats["shame"]["exp"]) + " Exp)\n"
-		bbcode += "   [color=gray]欲  望:[/color] LV " + str(char_data.stats["lust"]["level"]) + " (" + str(char_data.stats["lust"]["exp"]) + " Exp)\n"
-		bbcode += "   [color=gray]接受度:[/color] LV " + str(char_data.stats["devotion"]["level"]) + " (" + str(char_data.stats["devotion"]["exp"]) + " Exp)\n"
-		bbcode += "   [color=gray]C感觉:[/color] LV " + str(char_data.stats["sensory_C"]["level"]) + " (" + str(char_data.stats["sensory_C"]["exp"]) + " Exp)\n"
+		# 动态循环打印所有的硬性指标
+		for stat_key in CharacterData.STAT_KEYS:
+			var lvl = char_data.stats[stat_key]["level"]
+			var exp = char_data.stats[stat_key]["exp"]
+			bbcode += "   [color=gray]" + stat_key + ":[/color] LV " + str(lvl) + " (" + str(exp) + " Exp)\n"
+		
 		bbcode += "   [color=gray]Tags:[/color] [color=cyan]" + str(char_data.custom_tags) + "[/color]\n\n"
 		
 	stats_content.text = bbcode
@@ -379,10 +463,18 @@ func _on_roster_button_pressed() -> void:
 func _on_llm_reply(reply_text: String) -> void:
 	current_state = AppState.IDLE
 	
-	# 通过 ToolRegistry 拦截和处理所有的伪函数（JSON 数组或特殊宏标签）
+	# 通过 ToolRegistry 拦截和处理所有的伪函数（JSON 数组或特殊宏标签），并且剔除了 thinking 过程
 	var clean_text = tool_registry.parse_and_route(reply_text)
 	
 	_print_to_console("[color=pink]System/LLM返回 >\n" + clean_text + "[/color]")
+	
+	# 如果是角色扮演或Miku聊天，把剔除了废话的纯净正文存入全局记忆池
+	if current_request_mode == LLMClient.MODE_ROLEPLAY or current_request_mode == LLMClient.MODE_META:
+		global_chat_pool.append({
+			"role": "assistant",
+			"content": clean_text,
+			"participants": current_request_participants.duplicate()
+		})
 	
 	# 如果当前队列里有解析出来的宏观任务，自动在后台推演并打印结算
 	if task_manager.current_turn_tasks.size() > 0:
@@ -391,6 +483,7 @@ func _on_llm_reply(reply_text: String) -> void:
 		_print_to_console("\n[color=yellow]--- Godot 后台自动推演结算开始 ---[/color]")
 		for l in logs:
 			_print_to_console("[color=gray]" + l + "[/color]")
+			daily_system_logs.append(l)
 		_print_to_console("[color=yellow]--- 推演完毕 ---[/color]\n")
 		sim_engine.queue_free()
 		

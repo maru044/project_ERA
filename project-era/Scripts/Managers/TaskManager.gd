@@ -24,6 +24,8 @@ func enqueue_macro_tasks(task_list: Array) -> void:
 		var instructor_id = inst_raw[0] if typeof(inst_raw) == TYPE_ARRAY and inst_raw.size() > 0 else str(inst_raw)
 		var target_id = target_raw[0] if typeof(target_raw) == TYPE_ARRAY and target_raw.size() > 0 else str(target_raw)
 		
+		var is_edging = task.get("is_edging", false)
+		
 		var action_sequence = task.get("action_sequence", [])
 		if typeof(action_sequence) != TYPE_ARRAY:
 			push_warning("LLM 没有返回有效的 action_sequence 数组，使用空数组兜底。")
@@ -32,9 +34,10 @@ func enqueue_macro_tasks(task_list: Array) -> void:
 		current_turn_tasks.append({
 			"instructor_id": instructor_id,
 			"target_id": target_id,
+			"is_edging": is_edging,
 			"action_sequence": action_sequence
 		})
-		print("Task Enqueued: [", instructor_id, "] -> [", target_id, "], Actions: ", action_sequence.size())
+		print("Task Enqueued: [", instructor_id, "] -> [", target_id, "], Edging: ", is_edging, ", Actions: ", action_sequence.size())
 
 # ---------------------------------------------------------
 # 3. 消费队列并执行推演 (由 MainLoop 在时间推进时调用)
@@ -60,7 +63,7 @@ func execute_all_tasks(char_manager: CharacterManager, sim_engine: SimulationEng
 				action_sequence.append(raw_act)
 		
 		# 丢给仿真引擎一帧跑完
-		var result_logs = sim_engine.process_task_sequence(target, instructor, action_sequence)
+		var result_logs = sim_engine.process_task_sequence(target, instructor, task["is_edging"], action_sequence)
 		all_logs.append_array(result_logs)
 		
 	# 清空队列，准备下个回合

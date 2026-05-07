@@ -11,6 +11,7 @@ var regex_json: RegEx
 var regex_json_raw: RegEx
 var regex_stat: RegEx
 var regex_memory: RegEx
+var regex_think: RegEx
 
 # 注入所需的外部管理器依赖
 var task_manager: TaskManager
@@ -22,6 +23,10 @@ func _init(t_mgr: TaskManager, c_mgr: CharacterManager) -> void:
 	_compile_regex()
 
 func _compile_regex() -> void:
+	# 0. 剥离大模型思考过程的正则
+	regex_think = RegEx.new()
+	regex_think.compile("(?s)<think(?:ing)?>.*?</think(?:ing)?>")
+	
 	# 1. 匹配包裹在 ```json [...] ``` 中的 JSON 数组
 	regex_json = RegEx.new()
 	regex_json.compile("(?s)```(?:json)?\\s*(\\[.*?\\])\\s*```")
@@ -104,5 +109,11 @@ func parse_and_route(llm_raw_text: String) -> String:
 	# 抹除记忆注入标签
 	clean_text = regex_memory.sub(clean_text, "", true)
 	
-	# 返回抹除了所有 [系统宏] 的纯净文本，交给 Console UI 显示
+	# 最后，残忍地剥离大模型的全部思考过程（防止存入历史记录污染下文）
+	clean_text = regex_think.sub(clean_text, "", true)
+	
+	# 另外，去掉为了格式必须加的特殊标签，以免破坏沉浸感
+	clean_text = clean_text.replace("[使用简体中文开始游戏:]", "")
+	
+	# 返回抹除了所有 [系统宏] 和思考过程的纯净文本，交给 Console UI 显示与保存
 	return clean_text.strip_edges()
