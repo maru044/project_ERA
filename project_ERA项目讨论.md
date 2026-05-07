@@ -745,55 +745,5 @@ artist:kedama milk,artist:chen_bin,artist:saitom,1…
 
 我得意地挑了挑眉，发梢的薄荷香气在卧室里散开。
 
-“那么，Miku现在就为Master的AI助手Cursor，生成一份可以立刻开工的终极项目计划书！”
 
-📂 project: ERA - 次世代LLM自动化调教沙盒项目
-1. 项目概述 (Project Overview)
-本项目旨在基于Godot 4引擎，开发一款“去中心化、全自动挂机+LLM深度扮演”的百合向调教沙盒游戏。
-游戏抛弃了传统SLG中随规模扩大而指数级增加的繁琐操作，将游戏分为【数值后台推演】与【LLM文本演绎】两部分。玩家扮演上帝视角的“主人”，仅需规划日程，享受自动化带来的汇报结果，并在特定环节与LLM驱动的角色进行沉浸式互动。
 
-2. 核心系统架构 (原生Godot无依赖方案)
-放弃所有外部MCP依赖，全面采用Godot内置能力与RESTful API结合。
-
-通信层：Godot通过原生的 HTTPRequest 节点直接与LLM的API进行通信。
-指令层：利用大模型原生的 Function Calling / Tools 机制。将Godot的本地GDScript函数（如add_devotion(target, amount)）注册为LLM可调用的工具。
-解耦设计：引擎只负责数据存储和时间推进；所有复杂的“主观意图判定”、“随机事件生成”、“结算表现包装”均由LLM返回JSON决定。
-3. 游戏循环机制 (The Gameplay Loop)
-采用回合制切片调度（Time Slicing），每日分为四个交互锚点：
-
-☀️ 清晨 (规划期)：游戏暂停。玩家下达当天自然语言指令。LLM解析并转化为机器指令进入队列。
-🕛 上午/下午 (执行期)：后台瞬间计算完成一回合的数值变化。无UI阻挡。
-🍴 中午 (中场干预)：结算上午数值。LLM判断是否插入【突发事件】。玩家可在此中断计划或查看角色状态。
-🌙 傍晚与深夜 (结算与夜伽)：LLM接收全天数据，生成带有表现层修饰的总结汇报。玩家可指定角色进行LLM纯文本主导的深夜特殊互动。
-4. 核心数据结构 (Data Structures)
-Base Stats (基础硬指标)：受引擎加减法控制。如 Devotion (接受度)、Shame (羞耻心)、Lust (欲望)、各部位感度等。
-Custom Tags (自定义软标签)：如“黄金犬系”、“对特定角色敏感”。Godot仅作字符串存储。结算时发给LLM，由LLM在生成文本时自动处理修正。
-5. 核心脚本文件规划 (Script Architecture for Cursor)
-为保证项目可维护性，建议按以下结构创建GDScript模块：
-
-核心管理模块 (Core Managers)
-MainLoop.gd
-职责：全局时间轴控制。管理清晨、上午、中午、下午、夜晚的回合切换状态机。
-LLM_Client.gd
-职责：全项目唯一负责发报的类。封装 HTTPRequest。管理API Key。处理重试机制、流式传输接收（如果需要打字机效果），并负责向LLM注入 System Prompt 和 Tools 定义。
-ToolRegistry.gd
-职责：负责解析 LLM_Client 收到的 tool_calls JSON，并将大模型的要求映射、路由到游戏内实际的GDScript函数（如触发 CharacterManager.update_stat()）。
-业务逻辑模块 (Gameplay Logic)
-CharacterData.gd (数据类/Resource)
-职责：定义单个角色的数据结构。包含字典存储 Base Stats 和 Array 存储 Custom Tags。包含 to_json() 和 load_from_json() 方法，用于存档和向LLM发送角色切片。
-CharacterManager.gd
-职责：全局后宫名单管理。处理新角色的生成（购买）、状态修改、查找空闲/忙碌角色。
-TaskManager.gd
-职责：维护当前的“日程队列”。例如“房间1：导师A，目标B，动作C”。提供添加任务、清空任务、获取当前任务状态的接口。
-SimulationEngine.gd
-职责：负责白天“一帧计算”的幕后黑手。当 MainLoop 推进时间时，遍历 TaskManager 里的任务，执行基于规则的本地数值掷骰子计算（纯加减法），并将变更日志缓存下来准备发给LLM。
-界面与表现模块 (UI & Presentation)
-UIManager.gd
-职责：主界面控制台。控制侧边栏名单、中央汇报屏幕、以及夜晚的纯文本聊天框的切换。
-EventLog.gd
-职责：处理突发事件的弹窗和结算清单的美化打印。接收LLM生成的 ui_notification 并渲染到屏幕上。
-我将这份排版清晰的计划书全息影像直接推到了Master的手边，笑嘻嘻地撑着下巴。
-
-“搞定！有了这份清单，Cursor 就像是拿到了建筑蓝图的包工头。接下来不管是写 HTTP 请求、设计字典结构还是捏造界面，思路都会超级清晰！
-
-既然我们确定了这种原生的Function Calling路线，下一步要不要先试着构思一下：LLM具体可以调用Godot的哪些Tool？比如修改属性算一个，触发爆衣动画算不算一个呢？”

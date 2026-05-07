@@ -273,11 +273,19 @@ func _on_input_submitted(text: String) -> void:
 			if text.strip_edges() != "": temp_model = text.strip_edges()
 			_print_to_console("设置模型名称为: " + temp_model)
 			llm_client.setup_api(temp_url, temp_key, temp_model)
-			_print_to_console("\n[color=green]>>> 系统初始化完毕 <<<[/color]")
-			_print_to_console("现在您可以直接输入指令。系统将向 LLM 发起【意图解析 (Assign)】。")
-			_print_to_console("或者输入 '/miku 你的问题' 来召唤管理员进行【元叙事交流 (Meta)】。")
-			_print_to_console("或者输入 '/chat 角色ID1,角色ID2... 你的话' 来直接与角色进行【沉浸扮演 (Roleplay)】。")
-			input_field.placeholder_text = "输入指令，或 /miku，或 /chat id1 ..."
+			_print_to_console("\n[color=green]====================================================[/color]")
+			_print_to_console("[color=green]>>> 游戏初始化完毕！请通过下方输入框开始您的体验 <<<[/color]")
+			_print_to_console("[color=yellow]【模式 1：上帝视角沙盒调教 (默认直接输入)】[/color]")
+			_print_to_console("无需任何前缀，直接打字下达命令。引擎会自动跑暗骰结算。\n  [color=cyan]示例: 让日奈去调教千世的口交技术，可以粗暴一点。[/color]")
+			
+			_print_to_console("\n[color=yellow]【模式 2：沉浸式角色扮演对话 (/chat)】[/color]")
+			_print_to_console("输入 '/chat 角色名(可多选) 你的对话'，直接与角色互动（带记忆隔离）。\n  [color=cyan]示例: /chat 日奈,千世 你们昨晚感觉怎么样呀？[/color]")
+			
+			_print_to_console("\n[color=yellow]【模式 3：系统管理员求助 (/miku)】[/color]")
+			_print_to_console("输入 '/miku 你的问题' 召唤系统娘，她能看到所有隐藏数据。\n  [color=cyan]示例: /miku 帮我查一下千世为什么老是抗拒调教？[/color]")
+			_print_to_console("[color=green]====================================================[/color]\n")
+			
+			input_field.placeholder_text = "直接输入调教指令，或 /chat 角色名 对话，或 /miku 问题"
 			current_state = AppState.IDLE
 			
 		AppState.IDLE:
@@ -313,10 +321,25 @@ func _on_input_submitted(text: String) -> void:
 			# 如果指令以 /chat 开头，进入角色扮演对话模式 (内存隔离关键)
 			elif text.begins_with("/chat "):
 				mode = LLMClient.MODE_ROLEPLAY
-				# 解析命令: /chat hina_01,chise_01 你好呀
+				# 解析命令: /chat 日奈,千世 你好呀
 				var parts = text.substr(6).split(" ", false, 1)
 				if parts.size() > 0:
-					active_char_ids = Array(parts[0].split(","))
+					# 兼容中文逗号和英文逗号，防止玩家切换输入法烦躁
+					var names_str = parts[0].replace("，", ",")
+					var input_names = names_str.split(",")
+					for n in input_names:
+						n = n.strip_edges()
+						var found_id = ""
+						for c in char_manager.get_all_characters():
+							# 兼容玩家输入中文名或者英文ID
+							if c.char_name == n or c.id == n:
+								found_id = c.id
+								break
+						if found_id != "":
+							active_char_ids.append(found_id)
+						else:
+							_print_to_console("[color=red]系统提示: 找不到角色 '" + n + "'[/color]")
+				
 				if parts.size() > 1:
 					send_text = parts[1]
 				else:
