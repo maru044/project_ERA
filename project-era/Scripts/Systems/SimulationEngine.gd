@@ -69,14 +69,16 @@ func _execute_single_action(target: CharacterData, instructor: CharacterData, ac
 	if defend_stat != "none":
 		defend_lvl = target.stats[defend_stat]["level"]
 	
-	# 基底成功率 = 百合顺从 + 欲望 - 防御属性
-	var base_success = ob_lvl + lust_lvl - defend_lvl
+	# 核心机制：百合顺从是基底成功率。欲望和防御属性作为修正 (如80点羞耻心对应-8修正)
+	var lust_mod = int(lust_lvl / 10.0)
+	var defend_mod = int(defend_lvl / 10.0)
+	var base_success = ob_lvl + lust_mod - defend_mod
 	var instructor_bonus = 20 if instructor != null else 0 
 	
 	var cmd_modifier = clamp(int(action.get("difficulty_modifier", 0)), -50, 50)
-	var part_bonus = target.stats[check_stat]["level"]
+	var part_bonus = int(target.stats[check_stat]["level"] / 10.0)
 		
-	var final_chance_raw = 50 + base_success + instructor_bonus + cmd_modifier + part_bonus
+	var final_chance_raw = base_success + instructor_bonus + cmd_modifier + part_bonus
 	var final_chance = clamp(final_chance_raw, 5, 95) 
 	
 	var roll = randi() % 100 + 1 
@@ -84,8 +86,8 @@ func _execute_single_action(target: CharacterData, instructor: CharacterData, ac
 	var is_critical = roll <= final_chance / 5 
 	
 	var log_str = "\n[color=lightblue][" + cmd_name + "][/color] 正在进行 COC 判定...\n"
-	log_str += "  > 计算过程: 基础(50) + 顺从(" + str(ob_lvl) + ") + 欲望(" + str(lust_lvl) + ") - 阻力[" + defend_stat + "](" + str(defend_lvl) + ")"
-	log_str += " + 导师技巧(" + str(instructor_bonus) + ") + 动作修正(" + str(cmd_modifier) + ") + 部位等级加成(" + str(part_bonus) + ")\n"
+	log_str += "  > 计算过程: 顺从基础(" + str(ob_lvl) + ") + 欲望修正(" + str(lust_mod) + ") - 阻力修正[" + defend_stat + "](" + str(defend_mod) + ")"
+	log_str += " + 导师加成(" + str(instructor_bonus) + ") + 动作修正(" + str(cmd_modifier) + ") + 部位感觉修正(" + str(part_bonus) + ")\n"
 	log_str += "  > = 理论成功率 (" + str(final_chance_raw) + "%) -> 实际补正后 (" + str(final_chance) + "%)\n"
 	log_str += "  > 判定: " + str(final_chance) + "% | 掷骰: " + str(roll) + " -> "
 	

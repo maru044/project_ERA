@@ -5,10 +5,8 @@ extends Node
 var roster: Dictionary = {}
 
 # 加载外部图包和角色设定的主目录
-# "user://" 代表系统的 AppData 目录，更适合发布后玩家自行添加
-# 开发测试期间我们用 "res://" 也可以，这里为了演示外部加载特性，我们使用全局路径
-# 注意：在真实打包游戏中，建议使用 OS.get_executable_path().get_base_dir() + "/Mods/Characters"
-var mods_dir_path: String = "res://Mods/Characters" 
+# "user://" 代表系统的 AppData 目录，适合发布后玩家自行添加 (PC端)
+var mods_dir_path: String = "user://Mods/Characters" 
 
 # ---------------------------------------------------------
 # 1. 增删改查基础功能
@@ -43,6 +41,7 @@ func load_external_characters() -> void:
 	if dir == null:
 		push_warning("Mods directory not found or cannot be opened. Creating one...")
 		DirAccess.make_dir_recursive_absolute(mods_dir_path)
+		_create_template_file()
 		return
 		
 	dir.list_dir_begin()
@@ -89,6 +88,39 @@ func _load_character_from_folder(folder_path: String) -> void:
 		# TODO: 在此处可以继续补充加载 avatar.png 图片文件的逻辑，供 UI 调用
 	else:
 		push_error("JSON Parse Error in " + json_path + " at line " + str(json.get_error_line()))
+
+func _create_template_file() -> void:
+	# 创建一个基础的模板文件，方便不会代码的玩家照猫画虎
+	var template_path = mods_dir_path + "/ExampleChar"
+	DirAccess.make_dir_recursive_absolute(template_path)
+	var file = FileAccess.open(template_path + "/character_data.json", FileAccess.WRITE)
+	if file:
+		var json_str = """{
+  "id": "custom_01",
+  "name": "自建角色示例",
+  "base_stats_init": {
+	"shame": 90,
+	"lust": 10,
+	"devotion": 0,
+	"yuri_obedience": 50,
+	"edging_control": 20,
+	"sensory_B": 10,
+	"sensory_A": 0,
+	"sensory_V": 0,
+	"sensory_C": 0,
+	"sensory_M": 10,
+	"exhibitionism": 0,
+	"semen_addiction": 0
+  },
+  "custom_tags": [
+	"这里可以随便写任意文字",
+	"比如：黑皮辣妹",
+	"对主人有隐藏的好感"
+  ]
+}"""
+		file.store_string(json_str)
+		file.close()
+		print("Created Example Character template at: ", template_path)
 
 # ---------------------------------------------------------
 # 3. 提供给 LLM / Simulation Engine 批量调用的接口

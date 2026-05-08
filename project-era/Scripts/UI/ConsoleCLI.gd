@@ -11,6 +11,11 @@ var input_field: LineEdit
 var time_label: RichTextLabel
 var stats_window: Window
 var stats_content: RichTextLabel
+var help_window: Window
+var help_content: RichTextLabel
+var settings_window: Window
+var koujo_toggle: CheckButton
+var hide_thinking_toggle: CheckButton
 var llm_client: LLMClient
 var char_manager: CharacterManager
 var task_manager: TaskManager
@@ -73,6 +78,9 @@ func _ready() -> void:
 	char_manager = CharacterManager.new()
 	_init_mock_characters()
 	
+	# 尝试从外部用户目录加载玩家自制的 MOD 角色 (JSON)
+	char_manager.load_external_characters()
+	
 	task_manager = TaskManager.new()
 	add_child(task_manager)
 	
@@ -97,6 +105,12 @@ func _init_mock_characters() -> void:
 	hina.stats["shame"]["level"] = 15
 	hina.stats["lust"]["level"] = 90
 	hina.stats["devotion"]["level"] = 90
+	hina.stats["yuri_obedience"]["level"] = 95
+	hina.stats["edging_control"]["level"] = 90
+	hina.stats["sensory_M"]["level"] = 80
+	hina.stats["sensory_C"]["level"] = 50
+	hina.stats["sensory_V"]["level"] = 60
+	hina.stats["semen_addiction"]["level"] = 40
 	hina.custom_tags.assign(["风纪委员长", "对主人的命令绝对服从", "偶尔会撒娇", "顶级口交技巧", "极端小恶魔施虐狂"])
 	char_manager.add_character(hina)
 	
@@ -106,6 +120,14 @@ func _init_mock_characters() -> void:
 	ako.stats["shame"]["level"] = 25
 	ako.stats["lust"]["level"] = 85
 	ako.stats["devotion"]["level"] = 80
+	ako.stats["yuri_obedience"]["level"] = 85
+	ako.stats["edging_control"]["level"] = 20
+	ako.stats["rebellion"]["level"] = 10
+	ako.stats["sensory_B"]["level"] = 80
+	ako.stats["sensory_M"]["level"] = 70
+	ako.stats["sensory_V"]["level"] = 50
+	ako.stats["exhibitionism"]["level"] = 60
+	ako.stats["semen_addiction"]["level"] = 50
 	ako.custom_tags.assign(["风纪委员", "侧乳暴露", "极度崇拜日奈", "隐性M", "项圈", "精通指交与口交"])
 	char_manager.add_character(ako)
 
@@ -115,6 +137,11 @@ func _init_mock_characters() -> void:
 	iori.stats["shame"]["level"] = 35
 	iori.stats["lust"]["level"] = 75
 	iori.stats["devotion"]["level"] = 70
+	iori.stats["yuri_obedience"]["level"] = 60
+	iori.stats["edging_control"]["level"] = 50
+	iori.stats["rebellion"]["level"] = 50
+	iori.stats["sensory_M"]["level"] = 40
+	iori.stats["sensory_V"]["level"] = 70
 	iori.custom_tags.assign(["风纪委员", "银色双马尾", "傲娇", "足控诱惑", "经常吃瘪", "熟练的骑乘技巧"])
 	char_manager.add_character(iori)
 
@@ -124,33 +151,48 @@ func _init_mock_characters() -> void:
 	chinatsu.stats["shame"]["level"] = 20
 	chinatsu.stats["lust"]["level"] = 80
 	chinatsu.stats["devotion"]["level"] = 85
+	chinatsu.stats["yuri_obedience"]["level"] = 80
+	chinatsu.stats["edging_control"]["level"] = 80
+	chinatsu.stats["sensory_M"]["level"] = 60
+	chinatsu.stats["sensory_B"]["level"] = 60
+	chinatsu.stats["sensory_A"]["level"] = 40
+	chinatsu.stats["sensory_V"]["level"] = 60
 	chinatsu.custom_tags.assign(["风纪委员", "温泉合宿", "知性", "理疗师", "精通各种体位"])
 	char_manager.add_character(chinatsu)
 
 	# ==========================================
-	# 待调教对象 (10人) - 初始羞耻心极高，欲望低
+	# 待调教对象 (10人) - 细化各种感官与阶梯数值
 	# ==========================================
-	var target_names = [
-		{"id": "chise_01", "name": "千世", "tags": ["怕黑", "容易害羞", "被触碰胸部会颤抖"]},
-		{"id": "aru_01", "name": "阿露", "tags": ["笨蛋美人", "强行装酷", "容易破防"]},
-		{"id": "mutsuki_01", "name": "睦月", "tags": ["小恶魔", "喜欢捉弄人", "内心其实很害羞"]},
-		{"id": "yuuka_01", "name": "优香", "tags": ["计算狂", "大腿丰满", "理智容易崩溃"]},
-		{"id": "noa_01", "name": "诺亚", "tags": ["白发红眼", "过目不忘", "喜欢记录主人的声音"]},
-		{"id": "asuna_01", "name": "明日奈", "tags": ["黄金猎犬", "无心机", "肉便器潜质"]},
-		{"id": "karin_01", "name": "花凛", "tags": ["黑皮女仆", "容易不好意思", "后庭敏感"]},
-		{"id": "neru_01", "name": "妮露", "tags": ["不良少女", "傲娇", "被夸奖会暴走"]},
-		{"id": "toki_01", "name": "时", "tags": ["三无女仆", "和平时完全没变化", "面瘫"]},
-		{"id": "shiroko_01", "name": "白子", "tags": ["狼耳", "行动派", "喜欢运动", "体液敏感"]}
+	var targets_data = [
+		{"id": "chise_01", "name": "千世", "shame": 90, "lust": 10, "ob": 20, "edge": 10, "reb": 0, "s_b": 60, "s_a": 0, "s_v": 0, "s_c": 0, "s_m": 0, "exh": 0, "sem": 0, "tags": ["怕黑", "容易害羞", "被触碰胸部会颤抖"]},
+		{"id": "aru_01", "name": "阿露", "shame": 85, "lust": 20, "ob": 10, "edge": 20, "reb": 60, "s_b": 0, "s_a": 0, "s_v": 0, "s_c": 0, "s_m": 0, "exh": 5, "sem": 0, "tags": ["笨蛋美人", "强行装酷", "容易破防"]},
+		{"id": "mutsuki_01", "name": "睦月", "shame": 70, "lust": 40, "ob": 30, "edge": 60, "reb": 40, "s_b": 0, "s_a": 0, "s_v": 0, "s_c": 40, "s_m": 0, "exh": 0, "sem": 0, "tags": ["小恶魔", "喜欢捉弄人", "内心其实很害羞"]},
+		{"id": "yuuka_01", "name": "优香", "shame": 95, "lust": 5, "ob": 5, "edge": 80, "reb": 50, "s_b": 0, "s_a": 0, "s_v": 20, "s_c": 0, "s_m": 0, "exh": 0, "sem": 0, "tags": ["计算狂", "大腿丰满", "理智容易崩溃"]},
+		{"id": "noa_01", "name": "诺亚", "shame": 40, "lust": 60, "ob": 70, "edge": 90, "reb": 0, "s_b": 0, "s_a": 0, "s_v": 0, "s_c": 0, "s_m": 50, "exh": 40, "sem": 0, "tags": ["白发红眼", "过目不忘", "喜欢记录主人的声音"]},
+		{"id": "asuna_01", "name": "明日奈", "shame": 5, "lust": 95, "ob": 95, "edge": 5, "reb": 0, "s_b": 70, "s_a": 0, "s_v": 80, "s_c": 0, "s_m": 0, "exh": 80, "sem": 60, "tags": ["黄金猎犬", "无心机", "肉便器潜质"]},
+		{"id": "karin_01", "name": "花凛", "shame": 80, "lust": 30, "ob": 40, "edge": 40, "reb": 20, "s_b": 0, "s_a": 70, "s_v": 0, "s_c": 0, "s_m": 0, "exh": 10, "sem": 0, "tags": ["黑皮女仆", "容易不好意思", "后庭敏感"]},
+		{"id": "neru_01", "name": "妮露", "shame": 85, "lust": 15, "ob": 0, "edge": 50, "reb": 95, "s_b": 0, "s_a": 0, "s_v": 0, "s_c": 30, "s_m": 0, "exh": 0, "sem": 0, "tags": ["不良少女", "傲娇", "被夸奖会暴走"]},
+		{"id": "toki_01", "name": "时", "shame": 30, "lust": 20, "ob": 80, "edge": 95, "reb": 0, "s_b": 0, "s_a": 0, "s_v": 0, "s_c": 0, "s_m": 0, "exh": 20, "sem": 0, "tags": ["三无女仆", "和平时完全没变化", "面瘫"]},
+		{"id": "shiroko_01", "name": "白子", "shame": 45, "lust": 75, "ob": 65, "edge": 70, "reb": 0, "s_b": 0, "s_a": 0, "s_v": 50, "s_c": 0, "s_m": 60, "exh": 0, "sem": 70, "tags": ["狼耳", "行动派", "喜欢运动", "体液敏感"]}
 	]
 
-	for t in target_names:
+	for t in targets_data:
 		var c = CharacterData.new()
 		c.id = t["id"]
 		c.char_name = t["name"]
-		c.stats["shame"]["level"] = 80 + randi() % 15 # 80~94的极高羞耻心
-		c.stats["lust"]["level"] = randi() % 10 # 0~9的极低欲望
+		c.stats["shame"]["level"] = t["shame"]
+		c.stats["lust"]["level"] = t["lust"]
 		c.stats["devotion"]["level"] = 0
-		c.stats["edging_control"]["level"] = 5 + randi() % 5 # 给一点微弱的寸止基础
+		c.stats["yuri_obedience"]["level"] = t["ob"]
+		c.stats["edging_control"]["level"] = t["edge"]
+		c.stats["rebellion"]["level"] = t["reb"]
+		c.stats["sensory_B"]["level"] = t["s_b"]
+		c.stats["sensory_A"]["level"] = t["s_a"]
+		c.stats["sensory_V"]["level"] = t["s_v"]
+		c.stats["sensory_C"]["level"] = t["s_c"]
+		c.stats["sensory_M"]["level"] = t["s_m"]
+		c.stats["exhibitionism"]["level"] = t["exh"]
+		c.stats["semen_addiction"]["level"] = t["sem"]
 		c.custom_tags.assign(t["tags"])
 		char_manager.add_character(c)
 
@@ -201,6 +243,33 @@ func _build_ui() -> void:
 	roster_btn.add_theme_font_override("font", custom_font)
 	roster_btn.pressed.connect(_on_roster_button_pressed)
 	header_box.add_child(roster_btn)
+	
+	var help_btn = Button.new()
+	help_btn.text = " 📖 调教说明书 "
+	help_btn.add_theme_font_size_override("font_size", 22)
+	help_btn.add_theme_font_override("font", custom_font)
+	help_btn.pressed.connect(_on_help_button_pressed)
+	header_box.add_child(help_btn)
+	
+	var settings_btn = Button.new()
+	settings_btn.text = " ⚙️ 系统设置 "
+	settings_btn.add_theme_font_size_override("font_size", 22)
+	settings_btn.add_theme_font_override("font", custom_font)
+	settings_btn.pressed.connect(_on_settings_button_pressed)
+	header_box.add_child(settings_btn)
+	
+	# 初始化不可见状态的全局设置开关
+	koujo_toggle = CheckButton.new()
+	koujo_toggle.text = "开启 LLM 口上反馈 (跑骰后自动生成对话)"
+	koujo_toggle.add_theme_font_size_override("font_size", 20)
+	koujo_toggle.add_theme_font_override("font", custom_font)
+	koujo_toggle.button_pressed = true # MVP默认开启
+	
+	hide_thinking_toggle = CheckButton.new()
+	hide_thinking_toggle.text = "仅展示正文 (隐藏大模型思考过程)"
+	hide_thinking_toggle.add_theme_font_size_override("font_size", 20)
+	hide_thinking_toggle.add_theme_font_override("font", custom_font)
+	hide_thinking_toggle.button_pressed = false # MVP默认关闭
 	
 	# 输出框 (RichTextLabel)
 	output_log = RichTextLabel.new()
@@ -313,13 +382,13 @@ func _on_input_submitted(text: String) -> void:
 				return
 
 			# 如果指令以 /miku 开头，进入元叙事聊天模式
-			elif text.begins_with("/miku "):
+			elif text.to_lower().begins_with("/miku "):
 				mode = LLMClient.MODE_META
 				send_text = text.substr(6)
 				active_char_ids = ["miku_sys"]
 				
 			# 如果指令以 /chat 开头，进入角色扮演对话模式 (内存隔离关键)
-			elif text.begins_with("/chat "):
+			elif text.to_lower().begins_with("/chat "):
 				mode = LLMClient.MODE_ROLEPLAY
 				# 解析命令: /chat 日奈,千世 你好呀
 				var parts = text.substr(6).split(" ", false, 1)
@@ -363,7 +432,8 @@ func _on_input_submitted(text: String) -> void:
 			# 组装上下文发送（严格的记忆隔离与日记互通）
 			var context = {
 				"roster_data": {},
-				"daily_logs": []
+				"daily_logs": [],
+				"active_char_names": []
 			}
 			
 			var history_messages = []
@@ -374,6 +444,8 @@ func _on_input_submitted(text: String) -> void:
 				if mode == LLMClient.MODE_ROLEPLAY:
 					if active_char_ids.has(char_data.id):
 						context["roster_data"][char_data.id] = char_data.get_prompt_context(true) # 携带独占记忆
+						if not context["active_char_names"].has(char_data.char_name):
+							context["active_char_names"].append(char_data.char_name)
 				else:
 					# Assign 模式全看，但无独占记忆；Meta 模式全看
 					context["roster_data"][char_data.id] = char_data.get_prompt_context(false)
@@ -481,15 +553,96 @@ func _on_roster_button_pressed() -> void:
 	stats_content.text = bbcode
 
 # ---------------------------------------------------------
+# 系统指南弹窗
+# ---------------------------------------------------------
+func _on_help_button_pressed() -> void:
+	if help_window == null or not is_instance_valid(help_window):
+		help_window = Window.new()
+		help_window.title = "东方调教典 - 系统指南"
+		help_window.size = Vector2i(800, 600)
+		help_window.visible = false
+		help_window.exclusive = true
+		help_window.close_requested.connect(func(): help_window.hide())
+		add_child(help_window)
+		
+		var scroll = ScrollContainer.new()
+		scroll.set_anchors_preset(PRESET_FULL_RECT)
+		help_window.add_child(scroll)
+		
+		help_content = RichTextLabel.new()
+		help_content.bbcode_enabled = true
+		help_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		help_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		help_content.custom_minimum_size = Vector2(780, 0)
+		help_content.add_theme_font_size_override("normal_font_size", 20)
+		help_content.add_theme_font_size_override("bold_font_size", 20)
+		var custom_font = load("res://Fonts/SmileySans-Oblique.otf")
+		help_content.add_theme_font_override("normal_font", custom_font)
+		help_content.add_theme_font_override("bold_font", custom_font)
+		scroll.add_child(help_content)
+		
+	help_window.popup_centered()
+	var help_text = "[center][b]=== 东方调教典 ===[/b][/center]\n\n"
+	help_text += "[b]【核心暗骰公式】[/b]\n"
+	help_text += "成功率 = 顺从(基础) + 欲望/10 - 防御属性/10 + 导师技巧 + LLM动作修正 + 目标部位感觉/10\n\n"
+	help_text += "[b]【多重高潮与寸止系统】[/b]\n"
+	help_text += "调教产生的临时快感会积攒在各个部位。寸止忍耐(edging_control)决定了角色能承受多少上限而不走火。当下达【允许高潮】指令时，所有积攒满的部位会同时引爆，产生恐怖的指数级经验暴击，并大幅降低羞耻心！\n\n"
+	help_text += "[b]【常见属性对照表】[/b]\n"
+	for k in STAT_NAMES_CN.keys():
+		help_text += "- " + k + " : " + STAT_NAMES_CN[k] + "\n"
+		
+	help_content.text = help_text
+
+# ---------------------------------------------------------
+# 系统设置弹窗
+# ---------------------------------------------------------
+func _on_settings_button_pressed() -> void:
+	if settings_window == null or not is_instance_valid(settings_window):
+		settings_window = Window.new()
+		settings_window.title = "系统设置 (Settings)"
+		settings_window.size = Vector2i(450, 300)
+		settings_window.visible = false
+		settings_window.exclusive = true
+		settings_window.close_requested.connect(func(): settings_window.hide())
+		add_child(settings_window)
+		
+		var vbox = VBoxContainer.new()
+		vbox.set_anchors_preset(PRESET_FULL_RECT)
+		vbox.add_theme_constant_override("separation", 15)
+		var margin = MarginContainer.new()
+		margin.add_theme_constant_override("margin_left", 20)
+		margin.add_theme_constant_override("margin_top", 20)
+		margin.add_child(vbox)
+		settings_window.add_child(margin)
+		
+		# 将早就在 _build_ui 实例化好的按钮动态挂载进弹窗
+		if koujo_toggle.get_parent():
+			koujo_toggle.get_parent().remove_child(koujo_toggle)
+		vbox.add_child(koujo_toggle)
+		
+		if hide_thinking_toggle.get_parent():
+			hide_thinking_toggle.get_parent().remove_child(hide_thinking_toggle)
+		vbox.add_child(hide_thinking_toggle)
+		
+	settings_window.popup_centered()
+
+# ---------------------------------------------------------
 # 回调：LLM 处理完毕
 # ---------------------------------------------------------
 func _on_llm_reply(reply_text: String) -> void:
 	current_state = AppState.IDLE
 	
 	# 通过 ToolRegistry 拦截和处理所有的伪函数（JSON 数组或特殊宏标签），并且剔除了 thinking 过程
-	var clean_text = tool_registry.parse_and_route(reply_text)
+	var clean_text = tool_registry.parse_and_route(reply_text, current_request_mode)
 	
-	_print_to_console("[color=pink]System/LLM返回 >\n" + clean_text + "[/color]")
+	# 动态组装前端显示文本：判断是否要显示思考过程
+	var text_to_print = clean_text
+	if hide_thinking_toggle != null and not hide_thinking_toggle.button_pressed:
+		var think_match = RegEx.create_from_string("(?s)<think(?:ing)?>.*?</think(?:ing)?>").search(reply_text)
+		if think_match:
+			text_to_print = "[color=gray]" + think_match.get_string() + "[/color]\n\n" + clean_text
+			
+	_print_to_console("[color=pink]System/LLM返回 >\n" + text_to_print + "[/color]")
 	
 	# 如果是角色扮演或Miku聊天，把剔除了废话的纯净正文存入全局记忆池
 	if current_request_mode == LLMClient.MODE_ROLEPLAY or current_request_mode == LLMClient.MODE_META:
@@ -504,13 +657,34 @@ func _on_llm_reply(reply_text: String) -> void:
 		var sim_engine = SimulationEngine.new()
 		var logs = task_manager.execute_all_tasks(char_manager, sim_engine)
 		_print_to_console("\n[color=yellow]--- Godot 后台自动推演结算开始 ---[/color]")
+		var combined_logs = ""
 		for l in logs:
 			_print_to_console("[color=gray]" + l + "[/color]")
 			daily_system_logs.append(l)
+			combined_logs += l + "\n"
 		_print_to_console("[color=yellow]--- 推演完毕 ---[/color]\n")
 		sim_engine.queue_free()
 		
-		# 推演完成后自动推进时间阶段
+		# 判断是否需要请求口上反馈
+		if koujo_toggle.button_pressed:
+			current_state = AppState.WAITING_FOR_LLM
+			_print_to_console("[color=gray]...正在请求 LLM 生成调教口上反馈...[/color]")
+			current_request_mode = "koujo"
+			var context = {"roster_data": {}, "daily_logs": []}
+			
+			# 筛选出本回合互动的角色面板发送给大模型
+			for char_data in char_manager.get_all_characters():
+				# 此处简单起见，如果日志中提到了该名字，就压入面板
+				if combined_logs.find(char_data.char_name) != -1:
+					context["roster_data"][char_data.id] = char_data.get_prompt_context(true)
+					
+			llm_client.send_request("koujo", "【系统战报】：\n" + combined_logs, context, [])
+			return # 先不推进时间，等待口上回调
+		else:
+			# 推演完成后自动推进时间阶段
+			_advance_time()
+	elif current_request_mode == "koujo":
+		# 如果刚刚执行完口上反馈，推进时间
 		_advance_time()
 
 func _on_llm_error(err_msg: String) -> void:
