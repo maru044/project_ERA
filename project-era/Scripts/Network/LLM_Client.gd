@@ -20,6 +20,7 @@ const MODE_ASSIGN = "assign"     # A模式：后台无声分配，输出纯 JSON
 const MODE_ROLEPLAY = "roleplay" # B模式：深度夜伽，输出扮演文本
 const MODE_META = "meta"         # C模式：元叙事，Miku助手交流
 const MODE_KOUJO = "koujo"       # D模式：执行完毕后的口上反应生成
+const MODE_REPORT = "report"     # E模式：夜晚总结简报生成
 
 func _ready() -> void:
 	http_request = HTTPRequest.new()
@@ -87,6 +88,8 @@ func send_request(mode: String, user_input: String, context_data: Dictionary = {
 		prefill_text = "</think>\n<thinking>\nOK，Miku 保持轻松可爱、无需顾虑呢^_^！Master 是来找我讨论这些底层数据的对吧，我来看看应该怎么用吐槽的方式回复："
 	elif mode == MODE_KOUJO:
 		prefill_text = "</think>\n<thinking>\nOK，收到底层传来的战报了。我将严格根据刚刚系统跑骰得出的成功/失败/高潮结果，完全代入角色视角，来一场生动的调教口上演绎："
+	elif mode == MODE_REPORT:
+		prefill_text = "</think>\n<thinking>\nOK，现在我来作为系统向Master做今天的最终汇报。我会把今天系统里发生的事情梳理成一份优雅的、有条理的晚报："
 		
 	messages.append({
 		"role": "assistant",
@@ -177,6 +180,11 @@ func _build_system_prompt(mode: String, data: Dictionary) -> String:
 			prompt = "你是ERA沙盒表现引擎。以下是刚刚在底层系统执行完毕的动作检定战报，包含了冰冷的成功率、属性变动和走火高潮记录。\n请你根据这些战报中的客观事实，完全代入参与角色的视角，用第一人称写出符合她们性格的生动口上对话与肉体反应。\n"
 			prompt += PromptTemplates.CORE_SETTING
 			prompt += "\n当前参与互动的角色面板：\n" + data_str
+			prompt += "\n" + PromptTemplates.GAME_FORMAT_RULES
+		MODE_REPORT:
+			prompt = "你是ERA沙盒系统管理员Miku。以下是今天发生的所有调教事件检定战报。\n请你根据这些冰冷的数据，将其总结并润色为一份提供给Master的《每日晚报》。简报需要以客观但带有少许调侃的口吻进行总结，说明哪些角色承受了什么样的调教，获得了什么样的进展，或者发生了哪些多重高潮走火事件。\n"
+			prompt += PromptTemplates.CORE_SETTING
+			prompt += logs_str
 			prompt += "\n" + PromptTemplates.GAME_FORMAT_RULES
 	return prompt
 

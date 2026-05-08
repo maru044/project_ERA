@@ -210,12 +210,12 @@ func _build_ui() -> void:
 	# 垂直布局容器
 	var vbox = VBoxContainer.new()
 	vbox.set_anchors_preset(PRESET_FULL_RECT)
-	vbox.add_theme_constant_override("separation", 10)
+	vbox.add_theme_constant_override("separation", 15)
 	var margins = MarginContainer.new()
 	margins.add_theme_constant_override("margin_left", 20)
 	margins.add_theme_constant_override("margin_right", 20)
 	margins.add_theme_constant_override("margin_top", 20)
-	margins.add_theme_constant_override("margin_bottom", 100) # [Web/手机端安全区] 强行留白，防底栏遮挡输入框
+	margins.add_theme_constant_override("margin_bottom", 150) # [Web/手机端安全区] 加大留白，防底栏与系统键盘遮挡
 	margins.set_anchors_preset(PRESET_FULL_RECT)
 	margins.add_child(vbox)
 	add_child(margins)
@@ -230,30 +230,30 @@ func _build_ui() -> void:
 	time_label = RichTextLabel.new()
 	time_label.bbcode_enabled = true
 	time_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	time_label.custom_minimum_size.y = 40
-	time_label.add_theme_font_size_override("normal_font_size", 22)
-	time_label.add_theme_font_size_override("bold_font_size", 22)
+	time_label.custom_minimum_size.y = 50
+	time_label.add_theme_font_size_override("normal_font_size", 26)
+	time_label.add_theme_font_size_override("bold_font_size", 26)
 	time_label.add_theme_font_override("normal_font", custom_font)
 	time_label.add_theme_font_override("bold_font", custom_font)
 	header_box.add_child(time_label)
 	
 	var roster_btn = Button.new()
-	roster_btn.text = " 📋 查看后宫状态 "
-	roster_btn.add_theme_font_size_override("font_size", 22)
+	roster_btn.text = " 📋 查看后宫 "
+	roster_btn.add_theme_font_size_override("font_size", 26)
 	roster_btn.add_theme_font_override("font", custom_font)
 	roster_btn.pressed.connect(_on_roster_button_pressed)
 	header_box.add_child(roster_btn)
 	
 	var help_btn = Button.new()
-	help_btn.text = " 📖 调教说明书 "
-	help_btn.add_theme_font_size_override("font_size", 22)
+	help_btn.text = " 📖 调教指南 "
+	help_btn.add_theme_font_size_override("font_size", 26)
 	help_btn.add_theme_font_override("font", custom_font)
 	help_btn.pressed.connect(_on_help_button_pressed)
 	header_box.add_child(help_btn)
 	
 	var settings_btn = Button.new()
-	settings_btn.text = " ⚙️ 系统设置 "
-	settings_btn.add_theme_font_size_override("font_size", 22)
+	settings_btn.text = " ⚙️ 设置 "
+	settings_btn.add_theme_font_size_override("font_size", 26)
 	settings_btn.add_theme_font_override("font", custom_font)
 	settings_btn.pressed.connect(_on_settings_button_pressed)
 	header_box.add_child(settings_btn)
@@ -278,28 +278,36 @@ func _build_ui() -> void:
 	output_log.selection_enabled = true # 允许玩家使用鼠标拖拽选中文字
 	output_log.context_menu_enabled = true # 允许玩家右键呼出复制菜单
 	output_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	output_log.add_theme_font_size_override("normal_font_size", 24)
-	output_log.add_theme_font_size_override("bold_font_size", 24)
+	output_log.add_theme_font_size_override("normal_font_size", 28)
+	output_log.add_theme_font_size_override("bold_font_size", 28)
 	output_log.add_theme_font_override("normal_font", custom_font)
 	output_log.add_theme_font_override("bold_font", custom_font)
 	vbox.add_child(output_log)
 	
 	# --- 底部输入区 ---
-	var input_area = VBoxContainer.new()
+	var input_area = HBoxContainer.new()
 	input_area.add_theme_constant_override("separation", 15)
 	vbox.add_child(input_area)
 	
 	# 极宽极高的输入框
 	input_field = LineEdit.new()
 	input_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	input_field.custom_minimum_size.y = 70 # 确保好点击
-	input_field.add_theme_font_size_override("font_size", 26)
+	input_field.custom_minimum_size.y = 80 # 确保好点击
+	input_field.add_theme_font_size_override("font_size", 30)
 	input_field.add_theme_color_override("font_color", Color.GREEN_YELLOW)
 	input_field.add_theme_font_override("font", custom_font)
-	input_field.placeholder_text = "在此输入指令，按 Enter 键发送..."
+	input_field.placeholder_text = "在此输入指令..."
 	# 回车提交 (PC端为主)
 	input_field.text_submitted.connect(_on_input_submitted)
 	input_area.add_child(input_field)
+	
+	var send_btn = Button.new()
+	send_btn.text = " ➤ 发送 "
+	send_btn.custom_minimum_size.x = 120
+	send_btn.add_theme_font_size_override("font_size", 30)
+	send_btn.add_theme_font_override("font", custom_font)
+	send_btn.pressed.connect(func(): _on_input_submitted(input_field.text))
+	input_area.add_child(send_btn)
 	
 	# 启动后自动聚焦
 	input_field.grab_focus()
@@ -493,11 +501,34 @@ func _update_header() -> void:
 
 func _advance_time() -> void:
 	time_phase += 1
+	var trigger_report = false
+	if time_phase == 4: # 4 = "🌙 傍晚 (战报结算)"
+		trigger_report = true
+		
 	if time_phase >= PHASES.size():
 		time_phase = 0
 		current_day += 1
 		daily_system_logs.clear() # 跨天清空日志
 	_update_header()
+	
+	if trigger_report:
+		_generate_daily_report()
+
+func _generate_daily_report() -> void:
+	if daily_system_logs.size() == 0:
+		_print_to_console("\n[color=gray]今日无事发生...系统自动跳过晚报结算。[/color]")
+		_advance_time()
+		return
+		
+	current_state = AppState.WAITING_FOR_LLM
+	_print_to_console("\n[color=yellow]...正在整理今日所有行为日志，生成最终调教晚报...[/color]")
+	current_request_mode = "report"
+	
+	var context = {"roster_data": {}, "daily_logs": daily_system_logs.duplicate()}
+	for char_data in char_manager.get_all_characters():
+		context["roster_data"][char_data.id] = char_data.get_prompt_context(false)
+		
+	llm_client.send_request("report", "请对今天的日志进行总结汇报。", context, [])
 
 # ---------------------------------------------------------
 # 角色图鉴弹窗刷新
@@ -685,6 +716,9 @@ func _on_llm_reply(reply_text: String) -> void:
 			_advance_time()
 	elif current_request_mode == "koujo":
 		# 如果刚刚执行完口上反馈，推进时间
+		_advance_time()
+	elif current_request_mode == "report":
+		# 如果刚刚执行完夜晚简报，自动进入深夜夜伽
 		_advance_time()
 
 func _on_llm_error(err_msg: String) -> void:
