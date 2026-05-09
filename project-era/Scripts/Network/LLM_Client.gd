@@ -129,7 +129,7 @@ func _build_system_prompt(mode: String, data: Dictionary) -> String:
 			prompt += "【极其重要的防混淆警告】：请严格区分角色名字！比如'明日奈(asuna_01)'和'日奈(hina_01)'是完全独立的两个人。如果玩家明确要求调教'日奈'，你绝对只能输出 hina_01，不能因为名字有重叠就张冠李戴成 asuna_01！请仔细检查。\n"
 			prompt += PromptTemplates.ERA_SYSTEM_RULES
 			prompt += "\n【极其重要的输出规范】：\n1. 思考结束后，你必须关闭 </thinking> 标签。\n2. 必须输出 `[使用简体中文开始游戏:]` 标签。\n3. 紧接着开启 <content> 标签，并在其中严格输出包裹在 ```json 中的指令数组。\n4. 绝对禁止把 JSON 数组写在 thinking 内部！"
-			prompt += "\n5. 【警告】：绝对禁止在动作序列末尾盲目添加 'FINISHER'（允许高潮）指令！除非 Master 在输入中明确提及了‘高潮’、‘爆发’、‘射精’等字眼，否则日常的爱抚、破冰、甚至抽插，都只需输出常规动作序列即可。系统会在后台自动处理常规结算。"
+			prompt += "\n5. 关于 'FINISHER' (允许高潮) 指令的使用：如果玩家的指令涉及了寸止调教，或者明确有让角色高潮的意图，请在 `action_sequence` 数组的最后加上 `{\"type\": \"FINISHER\"}` 以便引擎结算多重高潮的奖励。普通的日常交流或破冰则不需要添加。"
 			prompt += "\n【JSON 结构要求】：\n每个任务对象包含 `instructor_id`, `target_id`, `is_edging`(布尔值, 是否开启寸止/高潮管理) 和 `action_sequence`(动作数组)。"
 			prompt += "每个动作必须包含: `action_flavor`(文本), `check_stat`(判定属性), `defend_stat`(防御属性,可以选shame/rebellion/none), `reward_stat`(奖励属性), `difficulty_modifier`(难度修正, -50到50)。"
 			prompt += "\n【正确参考案例 (一次单纯的日常破冰，不含高潮)】：\n"

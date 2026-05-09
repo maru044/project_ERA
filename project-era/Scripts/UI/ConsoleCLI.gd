@@ -10,10 +10,13 @@ var output_log: RichTextLabel
 var input_field: LineEdit
 var time_label: RichTextLabel
 var stats_window: Window
-var stats_content: RichTextLabel
+var stats_vbox: VBoxContainer
 var help_window: Window
 var help_content: RichTextLabel
 var settings_window: Window
+var lore_window: Window
+var lore_text_edit: TextEdit
+var current_lore_char_id: String
 var koujo_toggle: CheckButton
 var hide_thinking_toggle: CheckButton
 var llm_client: LLMClient
@@ -429,14 +432,6 @@ func _on_input_submitted(text: String) -> void:
 			current_request_mode = mode
 			current_request_participants = active_char_ids
 			
-			# 如果是角色扮演或Miku聊天，把用户的话存入全局记忆池
-			if mode == LLMClient.MODE_ROLEPLAY or mode == LLMClient.MODE_META:
-				global_chat_pool.append({
-					"role": "user",
-					"content": send_text,
-					"participants": active_char_ids.duplicate()
-				})
-			
 			# 组装上下文发送（严格的记忆隔离与日记互通）
 			var context = {
 				"roster_data": {},
@@ -490,6 +485,15 @@ func _on_input_submitted(text: String) -> void:
 			if history_messages.size() > 10:
 				history_messages = history_messages.slice(-10)
 				
+			# 修复：必须在提取完 history_messages 之后，再把当前玩家说的话压入全局记忆池。
+			# 否则这句最新的话会被当做历史记录发送一遍，又被当做 user_input 发送一遍，造成两次重复！
+			if mode == LLMClient.MODE_ROLEPLAY or mode == LLMClient.MODE_META:
+				global_chat_pool.append({
+					"role": "user",
+					"content": send_text,
+					"participants": active_char_ids.duplicate()
+				})
+				
 			llm_client.send_request(mode, send_text, context, history_messages)
 
 # ---------------------------------------------------------
@@ -531,15 +535,17 @@ func _generate_daily_report() -> void:
 	llm_client.send_request("report", "请对今天的日志进行总结汇报。", context, [])
 
 # ---------------------------------------------------------
-# 角色图鉴弹窗刷新
+# 角色图鉴与调试面板弹窗刷新
 # ---------------------------------------------------------
 func _on_roster_button_pressed() -> void:
+	var custom_font = load("res://Fonts/SmileySans-Oblique.otf")
+	
 	if stats_window == null or not is_instance_valid(stats_window):
 		push_warning("stats_window is null, rebuilding...")
 		# --- 角色图鉴弹窗 ---
 		stats_window = Window.new()
-		stats_window.title = "系统后台面板 - 角色状态档案"
-		stats_window.size = Vector2i(800, 600)
+		stats_window.title = "系统后台面板 - 角色状态档案与动态调试"
+		stats_window.size = Vector2i(800, 700)
 		stats_window.visible = false
 		stats_window.exclusive = true
 		stats_window.close_requested.connect(func(): stats_window.hide())
@@ -549,39 +555,171 @@ func _on_roster_button_pressed() -> void:
 		scroll.set_anchors_preset(PRESET_FULL_RECT)
 		stats_window.add_child(scroll)
 		
-		stats_content = RichTextLabel.new()
-		stats_content.bbcode_enabled = true
-		stats_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		stats_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		stats_content.custom_minimum_size = Vector2(780, 0)
-		stats_content.add_theme_font_size_override("normal_font_size", 20)
-		stats_content.add_theme_font_size_override("bold_font_size", 20)
-		# 尝试获取已加载的字体
-		var custom_font = load("res://Fonts/SmileySans-Oblique.otf")
-		stats_content.add_theme_font_override("normal_font", custom_font)
-		stats_content.add_theme_font_override("bold_font", custom_font)
-		scroll.add_child(stats_content)
+		stats_vbox = VBoxContainer.new()
+		stats_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stats_vbox.add_theme_constant_override("separation", 20)
 		
-	stats_window.popup_centered()
-	var bbcode = "[center][b]=== 系统运行中角色名单与属性总览 ===[/b][/center]\n\n"
+		var margin = MarginContainer.new()
+		margin.add_theme_constant_override("margin_left", 20)
+		margin.add_theme_constant_override("margin_right", 20)
+		margin.add_theme_constant_override("margin_top", 20)
+		margin.add_theme_constant_override("margin_bottom", 20)
+		margin.add_child(stats_vbox)
+		
+		scroll.add_child(margin)
+		
+	# 每次打开前清空旧的数据节点
+	for child in stats_vbox.get_children():
+		child.queue_free()
+		
+	var title_lbl = Label.new()
+	title_lbl.text = "=== 系统运行中角色名单与属性总览 ==="
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.add_theme_font_size_override("font_size", 24)
+	title_lbl.add_theme_font_override("font", custom_font)
+	stats_vbox.add_child(title_lbl)
 	
 	for char_data in char_manager.get_all_characters():
-		bbcode += "[b]" + char_data.char_name + "[/b] (ID: " + char_data.id + ")"
+		var panel = PanelContainer.new()
+		stats_vbox.add_child(panel)
 		
-		# 判断是否可以做调教师 (Devotion >= 50)
-		if char_data.stats["devotion"]["level"] >= 50:
-			bbcode += " [color=pink][b](⭐可担任调教师)[/b][/color]"
-		bbcode += "\n"
+		var char_vbox = VBoxContainer.new()
+		var p_margin = MarginContainer.new()
+		p_margin.add_theme_constant_override("margin_left", 15)
+		p_margin.add_theme_constant_override("margin_right", 15)
+		p_margin.add_theme_constant_override("margin_top", 15)
+		p_margin.add_theme_constant_override("margin_bottom", 15)
+		p_margin.add_child(char_vbox)
+		panel.add_child(p_margin)
 		
-		# 动态循环打印所有的硬性指标
+		# 角色名与徽章
+		var name_lbl = Label.new()
+		var badge = " [color=pink](⭐可担任调教师)[/color]" if char_data.stats["devotion"]["level"] >= 50 else ""
+		name_lbl.text = char_data.char_name + " (ID: " + char_data.id + ")"
+		if badge != "":
+			var r = RichTextLabel.new()
+			r.bbcode_enabled = true
+			r.text = "[b]" + name_lbl.text + badge + "[/b]"
+			r.fit_content = true
+			r.add_theme_font_size_override("normal_font_size", 22)
+			r.add_theme_font_size_override("bold_font_size", 22)
+			r.add_theme_font_override("normal_font", custom_font)
+			r.add_theme_font_override("bold_font", custom_font)
+			char_vbox.add_child(r)
+		else:
+			name_lbl.add_theme_font_size_override("font_size", 22)
+			name_lbl.add_theme_font_override("font", custom_font)
+			char_vbox.add_child(name_lbl)
+		
+		# 属性动态调节网格 (每行显示 3 或 4 个属性)
+		var grid = GridContainer.new()
+		grid.columns = 3
+		grid.add_theme_constant_override("h_separation", 30)
+		grid.add_theme_constant_override("v_separation", 10)
+		char_vbox.add_child(grid)
+		
 		for stat_key in CharacterData.STAT_KEYS:
-			var lvl = char_data.stats[stat_key]["level"]
-			var exp = char_data.stats[stat_key]["exp"]
-			bbcode += "   [color=gray]" + stat_key + ":[/color] LV " + str(lvl) + " (" + str(exp) + " Exp)\n"
+			var stat_hbox = HBoxContainer.new()
+			
+			var s_lbl = Label.new()
+			s_lbl.text = stat_key + ":"
+			s_lbl.custom_minimum_size.x = 140
+			s_lbl.add_theme_font_size_override("font_size", 18)
+			s_lbl.add_theme_font_override("font", custom_font)
+			s_lbl.add_theme_color_override("font_color", Color.LIGHT_GRAY)
+			stat_hbox.add_child(s_lbl)
+			
+			var spin = SpinBox.new()
+			spin.min_value = 0
+			spin.max_value = 100
+			spin.value = char_data.stats[stat_key]["level"]
+			spin.custom_minimum_size.x = 80
+			# 当数值改变时，使用 lambda 表达式将修改同步到底层
+			var current_char_id = char_data.id
+			var current_stat_key = stat_key
+			spin.value_changed.connect(func(new_val: float):
+				var target = char_manager.get_character(current_char_id)
+				if target:
+					target.set_stat_level(current_stat_key, int(new_val))
+			)
+			stat_hbox.add_child(spin)
+			
+			grid.add_child(stat_hbox)
+			
+		# Tags 设定书编辑按钮
+		var lore_btn = Button.new()
+		lore_btn.text = " 📝 编辑专属设定书 (Lorebook) "
+		lore_btn.add_theme_font_size_override("font_size", 20)
+		lore_btn.add_theme_font_override("font", custom_font)
 		
-		bbcode += "   [color=gray]Tags:[/color] [color=cyan]" + str(char_data.custom_tags) + "[/color]\n\n"
+		var char_id_for_lore = char_data.id
+		lore_btn.pressed.connect(func(): _open_lore_editor(char_id_for_lore))
+		char_vbox.add_child(lore_btn)
 		
-	stats_content.text = bbcode
+	stats_window.popup_centered()
+
+# ---------------------------------------------------------
+# Lorebook 编辑器弹窗
+# ---------------------------------------------------------
+func _open_lore_editor(c_id: String) -> void:
+	current_lore_char_id = c_id
+	var char_data = char_manager.get_character(c_id)
+	if not char_data: return
+	
+	if lore_window == null or not is_instance_valid(lore_window):
+		lore_window = Window.new()
+		lore_window.title = "世界设定书 (Lorebook)"
+		lore_window.size = Vector2i(700, 500)
+		lore_window.visible = false
+		lore_window.exclusive = true
+		lore_window.close_requested.connect(func(): lore_window.hide())
+		add_child(lore_window)
+		
+		var vbox = VBoxContainer.new()
+		vbox.set_anchors_preset(PRESET_FULL_RECT)
+		var margin = MarginContainer.new()
+		margin.add_theme_constant_override("margin_left", 15)
+		margin.add_theme_constant_override("margin_right", 15)
+		margin.add_theme_constant_override("margin_top", 15)
+		margin.add_theme_constant_override("margin_bottom", 15)
+		margin.set_anchors_preset(PRESET_FULL_RECT)
+		margin.add_child(vbox)
+		lore_window.add_child(margin)
+		
+		var tip = Label.new()
+		tip.text = "在此处可以畅所欲言地输入角色的背景、隐藏癖好、变态体质等设定。\n不需要加引号和括号，像写日记一样直接写即可。"
+		var custom_font = load("res://Fonts/SmileySans-Oblique.otf")
+		tip.add_theme_font_override("font", custom_font)
+		tip.add_theme_color_override("font_color", Color.LIGHT_GRAY)
+		vbox.add_child(tip)
+		
+		lore_text_edit = TextEdit.new()
+		lore_text_edit.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		lore_text_edit.add_theme_font_size_override("font_size", 22)
+		lore_text_edit.add_theme_font_override("font", custom_font)
+		lore_text_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+		vbox.add_child(lore_text_edit)
+		
+		var save_btn = Button.new()
+		save_btn.text = " 💾 保存设定并关闭 "
+		save_btn.add_theme_font_size_override("font_size", 24)
+		save_btn.add_theme_font_override("font", custom_font)
+		save_btn.pressed.connect(_save_lore_and_close)
+		vbox.add_child(save_btn)
+		
+	lore_window.title = char_data.char_name + " 的专属设定书"
+	# 将之前散落的数组通过换行符合并成一大段文字
+	lore_text_edit.text = "\n".join(char_data.custom_tags)
+	lore_window.popup_centered()
+
+func _save_lore_and_close() -> void:
+	var char_data = char_manager.get_character(current_lore_char_id)
+	if char_data:
+		# 直接把整个长文本作为唯一的一个元素塞入 custom_tags
+		char_data.custom_tags.clear()
+		if lore_text_edit.text.strip_edges() != "":
+			char_data.custom_tags.append(lore_text_edit.text.strip_edges())
+	lore_window.hide()
 
 # ---------------------------------------------------------
 # 系统指南弹窗
@@ -617,7 +755,20 @@ func _on_help_button_pressed() -> void:
 	help_text += "[b]【核心暗骰公式】[/b]\n"
 	help_text += "成功率 = 顺从(基础) + 欲望/10 - 防御属性/10 + 导师技巧 + LLM动作修正 + 目标部位感觉/10\n\n"
 	help_text += "[b]【多重高潮与寸止系统】[/b]\n"
-	help_text += "调教产生的临时快感会积攒在各个部位。寸止忍耐(edging_control)决定了角色能承受多少上限而不走火。当下达【允许高潮】指令时，所有积攒满的部位会同时引爆，产生恐怖的指数级经验暴击，并大幅降低羞耻心！\n\n"
+	help_text += "只要在指令中要求开启寸止，成功执行动作后会额外进行一次【寸止检定】（忍耐度 vs 固定难度）。如果忍住了，就能叠加一层【高潮倍率】。当下达【允许高潮】指令时，所有积攒的高潮倍率会同时引爆，产生恐怖的指数级经验暴击，并大幅降低羞耻心！\n\n"
+	help_text += "[b]【对数升级经验表】[/b]\n"
+	help_text += "单次普通动作获得 100 经验，大成功 300 经验。随着等级升高，所需经验会平滑增长：\n"
+	help_text += " 0 -> 1 级: 100 Exp\n"
+	help_text += " 10 -> 11 级: 800 Exp\n"
+	help_text += " 20 -> 21 级: 1,900 Exp\n"
+	help_text += " 30 -> 31 级: 3,400 Exp\n"
+	help_text += " 40 -> 41 级: 5,300 Exp\n"
+	help_text += " 50 -> 51 级: 7,600 Exp\n"
+	help_text += " 60 -> 61 级: 10,300 Exp\n"
+	help_text += " 70 -> 71 级: 13,400 Exp\n"
+	help_text += " 80 -> 81 级: 16,900 Exp\n"
+	help_text += " 90 -> 91 级: 20,800 Exp\n"
+	help_text += "（注：后期必须依靠多重高潮的指数级暴击才能快速升级）\n\n"
 	help_text += "[b]【常见属性对照表】[/b]\n"
 	for k in STAT_NAMES_CN.keys():
 		help_text += "- " + k + " : " + STAT_NAMES_CN[k] + "\n"

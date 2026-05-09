@@ -7,11 +7,9 @@ extends Node
 # 管理临时快感槽，以及结算多重高潮。绝对不依赖 LLM 请求。
 # ==============================================================================
 
-# --- 模拟运行中的“本回合临时快感槽” ---
-var temp_pleasure_pool: Dictionary = {
-	"sensory_M": 0, "sensory_B": 0, "sensory_A": 0, 
-	"sensory_C": 0, "sensory_V": 0, "sensory_P": 0
-}
+# --- 模拟运行中的“本回合高潮层数”与“受击部位” ---
+var current_orgasm_layers: int = 1
+var targeted_parts: Array[String] = []
 
 # ---------------------------------------------------------
 # 主入口：执行一个指令序列 (Task Sequence)
@@ -22,10 +20,10 @@ func process_task_sequence(target: CharacterData, instructor: CharacterData, is_
 	var mode_text = "【寸止模式】" if is_edging else "【普通模式】"
 	turn_logs.append("\n[color=yellow]=== [ " + inst_name + " ] 开始对 [ " + target.char_name + " ] 进行回合连招调教 " + mode_text + " ===[/color]")
 	
-	# 重置临时快感槽
-	for key in temp_pleasure_pool.keys():
-		temp_pleasure_pool[key] = 0
-		
+	# 重置高潮倍率层数与受击部位
+	current_orgasm_layers = 1
+	targeted_parts.clear()
+	
 	# 遍历执行每个动作
 	for action in actions:
 		var result_log = _execute_single_action(target, instructor, action, is_edging)
@@ -101,36 +99,30 @@ func _execute_single_action(target: CharacterData, instructor: CharacterData, ac
 		target.add_exp(reward_stat, base_part_exp)
 		log_str += " [" + reward_stat + " +" + str(base_part_exp) + " Exp]"
 		
-		# === 核心逻辑：临时快感与高潮系统 ===
-		var pleasure_gain = 30 if not is_critical else 60
-		if temp_pleasure_pool.has(reward_stat):
-			temp_pleasure_pool[reward_stat] += pleasure_gain
-			log_str += " 临时快感提升."
+		# 记录本次受击部位，供最终高潮结算使用
+		if not targeted_parts.has(reward_stat):
+			targeted_parts.append(reward_stat)
+		
+		# === 核心逻辑：寸止判定与多重高潮倍率叠加 ===
+		if is_edging:
+			var base_edging_exp = 1000 # 无条件获得基础的寸止经验
 			
-			var current_pleasure = temp_pleasure_pool[reward_stat]
-			var ORGASM_THRESHOLD = 100
-			
-			if not is_edging:
-				# 普通模式：快感满 100 立刻触发 1倍自然高潮并清零
-				if current_pleasure >= ORGASM_THRESHOLD:
-					target.add_exp(reward_stat, 500)
-					target.add_exp("devotion", 125)
-					target.reduce_exp("shame", 50)
-					temp_pleasure_pool[reward_stat] = 0 # 清空
-					log_str += "\n  [color=pink]★ 达到高潮阈值，自然释放！[/color] [" + reward_stat + " +500 Exp] [devotion +125 Exp] [shame -50 Exp]"
+			var edge_lvl = target.stats["edging_control"]["level"]
+			var edge_roll = randi() % 100 + 1
+			# 寸止检定：基于角色的寸止忍耐技巧进行判定
+			var edge_chance = clamp(edge_lvl + 20, 10, 90) # 给定一个基础胜率
+			log_str += "\n  > [寸止检定] 忍耐度(" + str(edge_lvl) + ") | 掷骰: " + str(edge_roll) + " / " + str(edge_chance) + "% -> "
+			if edge_roll <= edge_chance:
+				current_orgasm_layers += 1
+				target.add_exp("edging_control", base_edging_exp + 2000)
+				log_str += "[color=pink]成功！高潮倍率累积至 " + str(current_orgasm_layers) + " 重！[/color] [edging_control +" + str(base_edging_exp + 2000) + " Exp]"
 			else:
-				# 寸止模式：快感无上限累积，但检查是否走火
-				var max_capacity = 100 + (target.stats["edging_control"]["level"] * 10)
-				if current_pleasure > max_capacity:
-					# 超过忍耐极限，走火！拿到 1 倍保底，清空快感，增加反抗度
-					target.add_exp(reward_stat, 500)
-					target.add_exp("rebellion", 100)
-					temp_pleasure_pool[reward_stat] = 0
-					log_str += "\n  [color=red]⚠ 超过忍耐极限，意外走火绝顶！[/color] 惩罚性结算：[" + reward_stat + " +500 Exp] [rebellion +100 Exp]"
+				target.add_exp("edging_control", base_edging_exp)
+				log_str += "[color=gray]失败，未能叠加倍率。[/color] [edging_control +" + str(base_edging_exp) + " Exp]"
 
-		# 获得底层的真实Exp (顺从和欲望)
-		var ob_exp = 10 if not is_critical else 30
-		var lust_exp = 5 if not is_critical else 15
+		# 获得底层的真实Exp (顺从和欲望) 统一按大额基数计算
+		var ob_exp = 100 if not is_critical else 300
+		var lust_exp = 100 if not is_critical else 300
 		target.add_exp("yuri_obedience", ob_exp)
 		target.add_exp("lust", lust_exp)
 		log_str += " [yuri_obedience +" + str(ob_exp) + " Exp] [lust +" + str(lust_exp) + " Exp]"
@@ -146,40 +138,31 @@ func _execute_single_action(target: CharacterData, instructor: CharacterData, ac
 # 终极结算：多重高潮判定 (Finisher)
 # ---------------------------------------------------------
 func _process_orgasm_finisher(target: CharacterData) -> String:
-	var orgasm_count = 0
-	var triggered_parts = []
-	var total_multiplier = 0
-	var ORGASM_THRESHOLD = 100
-	
-	# 检查有哪些部位的临时快感超过了高潮阈值，并计算深度倍率
-	for part in temp_pleasure_pool.keys():
-		var p_val = temp_pleasure_pool[part]
-		if p_val >= ORGASM_THRESHOLD:
-			orgasm_count += 1
-			triggered_parts.append(part)
-			# 深度倍率：快感溢出越多，该部位倍率越高（如 350 快感 = 3 倍深度）
-			total_multiplier += int(p_val / ORGASM_THRESHOLD)
-			
-	if orgasm_count == 0:
-		return "[允许高潮] 失败：快感不足，角色感到空虚。"
+	if targeted_parts.size() == 0:
+		return "[允许高潮] 失败：没有任何受击部位，角色感到空虚。"
 		
-	var log_str = "[color=pink][允许高潮] 引爆！达成 " + str(orgasm_count) + " 重高潮！部位: " + str(triggered_parts) + "[/color]"
+	var log_str = "[color=pink][允许高潮] 引爆！达成 " + str(current_orgasm_layers) + " 重高潮！波及部位: " + str(targeted_parts) + "[/color]"
 	
 	# ===== 核爆级多重高潮收益结算 =====
 	var base_exp = 500
 	# 广度倍率：多重高潮的指数级放大（1重=1，2重=4，3重=9，4重=16...）
-	var breadth_multiplier = pow(orgasm_count, 2.0)
+	var breadth_multiplier = pow(current_orgasm_layers, 2.0)
 	
-	# 总暴击经验 = 基础(500) * 深度倍率和 * 广度倍率
-	var final_exp_reward = int(base_exp * total_multiplier * breadth_multiplier)
+	# 总暴击经验 = 基础(500) * 广度倍率
+	var final_exp_reward = int(base_exp * breadth_multiplier)
 	
-	# 1. 对应爆发部位获得海量 Exp
-	for part in triggered_parts:
+	# 1. 对本回合所有受击部位获得海量 Exp
+	for part in targeted_parts:
 		target.add_exp(part, final_exp_reward)
 		log_str += "\n  [" + part + " +" + str(final_exp_reward) + " Exp]"
 		
+	# 1.5 欲望与顺从同样吃满多重高潮的暴击红利
+	target.add_exp("lust", final_exp_reward)
+	target.add_exp("yuri_obedience", final_exp_reward)
+	log_str += "\n  [lust +" + str(final_exp_reward) + " Exp] [yuri_obedience +" + str(final_exp_reward) + " Exp]"
+		
 	# 2. 强行削减羞耻心，击碎心防 (这是最难涨的负向属性，只有多重高潮能有效击破)
-	var shame_damage = int(100 * total_multiplier * breadth_multiplier)
+	var shame_damage = int(100 * breadth_multiplier)
 	target.reduce_exp("shame", shame_damage)
 	log_str += " [shame -" + str(shame_damage) + " Exp]"
 	
@@ -187,8 +170,8 @@ func _process_orgasm_finisher(target: CharacterData) -> String:
 	target.add_exp("devotion", final_exp_reward / 2)
 	log_str += " | 精神防线彻底崩溃！ [devotion +" + str(final_exp_reward / 2) + " Exp]"
 		
-	# 清空结算后的临时快感
-	for key in temp_pleasure_pool.keys():
-		temp_pleasure_pool[key] = 0
+	# 结算后清空层数
+	current_orgasm_layers = 1
+	targeted_parts.clear()
 		
 	return log_str

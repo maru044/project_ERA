@@ -40,9 +40,6 @@ const STAT_KEYS = [
 	"edging_control"   # 寸止技巧/高潮忍耐
 ]
 
-# 升级所需的对数基础难度乘数
-const EXP_BASE_MULTIPLIER = 100.0
-
 func _init() -> void:
 	# 初始化所有属性，默认等级 0，经验 0
 	for key in STAT_KEYS:
@@ -52,15 +49,14 @@ func _init() -> void:
 		}
 
 # ---------------------------------------------------------
-# 核心机制 1：基于对数的等级所需经验池计算 (Exp Cap)
-# 公式：所需经验 = 基础乘数 * (Level^2 + Level * 10) + 100
-# 目的：前期极易升级（破冰），后期（80级以上）需要海量经验（防毕业）
+# 核心机制 1：基于平滑曲线的等级所需经验池计算 (Exp Cap)
+# 公式：所需经验 = 2 * (Level^2) + 50 * Level + 100
+# 目的：前期极易升级（破冰），后期防锁死，鼓励使用多重高潮结算
 # ---------------------------------------------------------
 func get_exp_cap_for_level(level: int) -> int:
 	if level >= 100:
 		return 999999999 # 满级锁定
-	# 对数级曲线，随着 level 上升所需 exp 爆炸式增长
-	return int(EXP_BASE_MULTIPLIER * (pow(level, 2.0) + level * 10.0)) + 100
+	return int(2.0 * pow(level, 2.0) + 50.0 * level) + 100
 
 # ---------------------------------------------------------
 # 核心机制 2：添加经验并自动处理正向升级 (Positive Training)
@@ -121,6 +117,11 @@ func reduce_exp(stat_key: String, amount: int) -> void:
 # ---------------------------------------------------------
 # 辅助方法：序列化与反序列化，供 LLM 通信及存档使用
 # ---------------------------------------------------------
+func set_stat_level(stat_key: String, new_level: int) -> void:
+	if stats.has(stat_key):
+		stats[stat_key]["level"] = clamp(new_level, 0, 100)
+		stats[stat_key]["exp"] = 0 # 重置经验为0
+
 func to_dict() -> Dictionary:
 	return {
 		"id": id,
