@@ -311,12 +311,6 @@ func _build_ui() -> void:
 	input_field.add_theme_font_override("font", custom_font)
 	input_field.placeholder_text = "在此输入指令..."
 	
-	# 确保在手机端被触摸点击时，强行呼叫底层 API 拉起系统软键盘
-	input_field.gui_input.connect(func(event: InputEvent):
-		if event is InputEventScreenTouch and event.pressed:
-			DisplayServer.virtual_keyboard_show("")
-	)
-	
 	# 回车提交 (PC端为主)
 	input_field.text_submitted.connect(_on_input_submitted)
 	input_area.add_child(input_field)
