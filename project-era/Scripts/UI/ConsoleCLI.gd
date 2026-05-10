@@ -315,6 +315,19 @@ func _build_ui() -> void:
 	input_field.text_submitted.connect(_on_input_submitted)
 	input_area.add_child(input_field)
 	
+	var paste_btn = Button.new()
+	paste_btn.text = " 📋 粘贴 "
+	paste_btn.custom_minimum_size.x = 100
+	paste_btn.add_theme_font_size_override("font_size", 30)
+	paste_btn.add_theme_font_override("font", custom_font)
+	paste_btn.pressed.connect(func():
+		var clipboard_text = DisplayServer.clipboard_get()
+		if clipboard_text != "":
+			# 在当前光标位置或者直接追加文本
+			input_field.text += clipboard_text
+	)
+	input_area.add_child(paste_btn)
+	
 	var send_btn = Button.new()
 	send_btn.text = " ➤ 发送 "
 	send_btn.custom_minimum_size.x = 120
