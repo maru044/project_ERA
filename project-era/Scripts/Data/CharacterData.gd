@@ -136,8 +136,18 @@ func load_from_dict(data: Dictionary) -> void:
 	if data.has("id"): id = data["id"]
 	if data.has("char_name"): char_name = data["char_name"]
 	if data.has("description"): description = data["description"]
-	if data.has("exclusive_memories"): exclusive_memories = data["exclusive_memories"]
-	if data.has("custom_tags"): custom_tags = data["custom_tags"]
+	
+	if data.has("exclusive_memories"):
+		exclusive_memories.clear()
+		var mems = data["exclusive_memories"]
+		if typeof(mems) == TYPE_ARRAY:
+			for m in mems: exclusive_memories.append(String(m))
+			
+	if data.has("custom_tags"):
+		custom_tags.clear()
+		var tags = data["custom_tags"]
+		if typeof(tags) == TYPE_ARRAY:
+			for t in tags: custom_tags.append(String(t))
 	
 	if data.has("stats"):
 		for key in data["stats"].keys():

@@ -19,6 +19,9 @@ var lore_text_edit: TextEdit
 var current_lore_char_id: String
 var koujo_toggle: CheckButton
 var hide_thinking_toggle: CheckButton
+var save_window: Window
+var save_list_vbox: VBoxContainer
+var save_name_input: LineEdit
 var llm_client: LLMClient
 var char_manager: CharacterManager
 var task_manager: TaskManager
@@ -261,6 +264,13 @@ func _build_ui() -> void:
 	settings_btn.pressed.connect(_on_settings_button_pressed)
 	header_box.add_child(settings_btn)
 	
+	var save_btn = Button.new()
+	save_btn.text = " 💾 存/读档 "
+	save_btn.add_theme_font_size_override("font_size", 26)
+	save_btn.add_theme_font_override("font", custom_font)
+	save_btn.pressed.connect(_on_save_menu_pressed)
+	header_box.add_child(save_btn)
+	
 	# 初始化不可见状态的全局设置开关
 	koujo_toggle = CheckButton.new()
 	koujo_toggle.text = "开启 LLM 口上反馈 (跑骰后自动生成对话)"
@@ -300,6 +310,13 @@ func _build_ui() -> void:
 	input_field.add_theme_color_override("font_color", Color.GREEN_YELLOW)
 	input_field.add_theme_font_override("font", custom_font)
 	input_field.placeholder_text = "在此输入指令..."
+	
+	# 确保在手机端被触摸点击时，强行呼叫底层 API 拉起系统软键盘
+	input_field.gui_input.connect(func(event: InputEvent):
+		if event is InputEventScreenTouch and event.pressed:
+			DisplayServer.virtual_keyboard_show("")
+	)
+	
 	# 回车提交 (PC端为主)
 	input_field.text_submitted.connect(_on_input_submitted)
 	input_area.add_child(input_field)
@@ -807,6 +824,164 @@ func _on_settings_button_pressed() -> void:
 		vbox.add_child(hide_thinking_toggle)
 		
 	settings_window.popup_centered()
+
+# ---------------------------------------------------------
+# 存读档管理弹窗
+# ---------------------------------------------------------
+func _on_save_menu_pressed() -> void:
+	if save_window == null or not is_instance_valid(save_window):
+		save_window = Window.new()
+		save_window.title = "系统存储 (Save/Load)"
+		save_window.size = Vector2i(600, 500)
+		save_window.visible = false
+		save_window.exclusive = true
+		save_window.close_requested.connect(func(): save_window.hide())
+		add_child(save_window)
+		
+		var vbox = VBoxContainer.new()
+		vbox.set_anchors_preset(PRESET_FULL_RECT)
+		var margin = MarginContainer.new()
+		margin.add_theme_constant_override("margin_left", 20)
+		margin.add_theme_constant_override("margin_right", 20)
+		margin.add_theme_constant_override("margin_top", 20)
+		margin.add_theme_constant_override("margin_bottom", 20)
+		margin.set_anchors_preset(PRESET_FULL_RECT)
+		margin.add_child(vbox)
+		save_window.add_child(margin)
+		
+		var custom_font = load("res://Fonts/SmileySans-Oblique.otf")
+		
+		# 顶部新建存档区
+		var top_hbox = HBoxContainer.new()
+		save_name_input = LineEdit.new()
+		save_name_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		save_name_input.placeholder_text = "输入新存档名称..."
+		save_name_input.add_theme_font_override("font", custom_font)
+		top_hbox.add_child(save_name_input)
+		
+		var create_save_btn = Button.new()
+		create_save_btn.text = " ➕ 创建新存档 "
+		create_save_btn.add_theme_font_override("font", custom_font)
+		create_save_btn.pressed.connect(func(): 
+			if save_name_input.text.strip_edges() != "":
+				_save_game(save_name_input.text.strip_edges())
+				save_name_input.text = ""
+				_refresh_save_list()
+		)
+		top_hbox.add_child(create_save_btn)
+		vbox.add_child(top_hbox)
+		
+		var sep = HSeparator.new()
+		vbox.add_child(sep)
+		
+		# 存档列表区
+		var scroll = ScrollContainer.new()
+		scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		save_list_vbox = VBoxContainer.new()
+		save_list_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		scroll.add_child(save_list_vbox)
+		vbox.add_child(scroll)
+		
+	_refresh_save_list()
+	save_window.popup_centered()
+
+func _save_game(save_name: String) -> void:
+	var save_dir = "user://Saves"
+	if not DirAccess.dir_exists_absolute(save_dir):
+		DirAccess.make_dir_recursive_absolute(save_dir)
+		
+	var save_data = {
+		"current_day": current_day,
+		"time_phase": time_phase,
+		"daily_system_logs": daily_system_logs,
+		"global_chat_pool": global_chat_pool,
+		"characters": []
+	}
+	
+	for c in char_manager.get_all_characters():
+		save_data["characters"].append(c.to_dict())
+		
+	var file_path = save_dir + "/" + save_name + ".json"
+	var file = FileAccess.open(file_path, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(save_data, "\t"))
+		file.close()
+		_print_to_console("\n[color=green]系统提示: 游戏进度已保存至 -> " + save_name + "[/color]")
+
+func _load_game(file_name: String) -> void:
+	var file_path = "user://Saves/" + file_name
+	if not FileAccess.file_exists(file_path): return
+	
+	var file = FileAccess.open(file_path, FileAccess.READ)
+	var json_str = file.get_as_text()
+	var json = JSON.new()
+	if json.parse(json_str) == OK:
+		var data = json.data
+		current_day = data.get("current_day", 1)
+		time_phase = data.get("time_phase", 0)
+		
+		daily_system_logs.clear()
+		var loaded_logs = data.get("daily_system_logs", [])
+		if typeof(loaded_logs) == TYPE_ARRAY:
+			for l in loaded_logs: daily_system_logs.append(String(l))
+			
+		global_chat_pool.clear()
+		var loaded_pool = data.get("global_chat_pool", [])
+		if typeof(loaded_pool) == TYPE_ARRAY:
+			for p in loaded_pool: global_chat_pool.append(p as Dictionary)
+		
+		var loaded_chars = data.get("characters", [])
+		for c_data in loaded_chars:
+			var existing_c = char_manager.get_character(c_data["id"])
+			if existing_c:
+				existing_c.load_from_dict(c_data)
+				
+		_update_header()
+		save_window.hide()
+		output_log.text = ""
+		_print_to_console("[color=green]>>> 读档成功！欢迎回来，Master。 <<<[/color]")
+		_print_to_console("[color=gray]加载了存档: " + file_name + " | 当前时间: 第 " + str(current_day) + " 天[/color]")
+
+func _refresh_save_list() -> void:
+	for child in save_list_vbox.get_children():
+		child.queue_free()
+		
+	var custom_font = load("res://Fonts/SmileySans-Oblique.otf")
+	var save_dir = "user://Saves"
+	if not DirAccess.dir_exists_absolute(save_dir): return
+	
+	var dir = DirAccess.open(save_dir)
+	if dir:
+		dir.list_dir_begin()
+		var file_name = dir.get_next()
+		while file_name != "":
+			if not dir.current_is_dir() and file_name.ends_with(".json"):
+				var hbox = HBoxContainer.new()
+				var lbl = Label.new()
+				lbl.text = "📄 " + file_name.replace(".json", "")
+				lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				lbl.add_theme_font_override("font", custom_font)
+				hbox.add_child(lbl)
+				
+				var load_btn = Button.new()
+				load_btn.text = "读取"
+				load_btn.add_theme_font_override("font", custom_font)
+				var fn_for_load = file_name
+				load_btn.pressed.connect(func(): _load_game(fn_for_load))
+				hbox.add_child(load_btn)
+				
+				var del_btn = Button.new()
+				del_btn.text = "删除"
+				del_btn.add_theme_font_override("font", custom_font)
+				var fn_for_del = file_name
+				del_btn.pressed.connect(func(): 
+					DirAccess.remove_absolute("user://Saves/" + fn_for_del)
+					_refresh_save_list()
+				)
+				hbox.add_child(del_btn)
+				
+				save_list_vbox.add_child(hbox)
+			file_name = dir.get_next()
 
 # ---------------------------------------------------------
 # 回调：LLM 处理完毕
