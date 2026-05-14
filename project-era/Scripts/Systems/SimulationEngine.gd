@@ -20,6 +20,14 @@ func process_task_sequence(target: CharacterData, instructor: CharacterData, is_
 	var mode_text = "【寸止模式】" if is_edging else "【普通模式】"
 	turn_logs.append("\n[color=yellow]=== [ " + inst_name + " ] 开始对 [ " + target.char_name + " ] 进行回合连招调教 " + mode_text + " ===[/color]")
 	
+	# 记录本回合开始前的所有属性状态，用于最终比对
+	var old_stats = {}
+	for key in target.stats.keys():
+		old_stats[key] = {
+			"level": target.stats[key]["level"],
+			"exp": target.stats[key]["exp"]
+		}
+	
 	# 重置高潮倍率层数与受击部位
 	current_orgasm_layers = 1
 	targeted_parts.clear()
@@ -28,6 +36,31 @@ func process_task_sequence(target: CharacterData, instructor: CharacterData, is_
 	for action in actions:
 		var result_log = _execute_single_action(target, instructor, action, is_edging)
 		turn_logs.append(result_log)
+		
+	# === 结算本回合的属性总变化 ===
+	var summary = "\n[color=cyan]=== 本回合属性成长总结 ===[/color]\n"
+	var has_changes = false
+	for key in target.stats.keys():
+		var old_lvl = old_stats[key]["level"]
+		var new_lvl = target.stats[key]["level"]
+		var old_e = old_stats[key]["exp"]
+		var new_e = target.stats[key]["exp"]
+		
+		if old_lvl != new_lvl or old_e != new_e:
+			has_changes = true
+			var cap = target.get_exp_cap_for_level(new_lvl)
+			var level_text = ""
+			if new_lvl > old_lvl:
+				level_text = " [color=yellow]★ 升级! (Lv." + str(old_lvl) + " -> Lv." + str(new_lvl) + ")[/color]"
+			elif new_lvl < old_lvl:
+				level_text = " [color=red]▼ 降级! (Lv." + str(old_lvl) + " -> Lv." + str(new_lvl) + ")[/color]"
+			else:
+				level_text = " (Lv." + str(new_lvl) + ")"
+				
+			summary += "> " + key + ":" + level_text + " | 当前进度: " + str(new_e) + " / " + str(cap) + " Exp\n"
+			
+	if has_changes:
+		turn_logs.append(summary)
 			
 	turn_logs.append("[color=yellow]=== [ " + inst_name + " ] 对 [ " + target.char_name + " ] 的调教回合结束 ===[/color]\n")
 	return turn_logs

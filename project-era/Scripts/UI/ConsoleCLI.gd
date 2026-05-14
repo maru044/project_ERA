@@ -27,6 +27,8 @@ var char_manager: CharacterManager
 var task_manager: TaskManager
 var tool_registry: ToolRegistry
 
+var pending_system_logs: Array[String] = []
+
 # 简单的状态机
 enum AppState { SETUP_URL, SETUP_KEY, SETUP_MODEL, IDLE, WAITING_FOR_LLM }
 var current_state: AppState = AppState.SETUP_URL
@@ -92,6 +94,9 @@ func _ready() -> void:
 	
 	# 初始化正则路由枢纽
 	tool_registry = ToolRegistry.new(task_manager, char_manager)
+	tool_registry.on_system_log_generated.connect(func(log_text: String):
+		pending_system_logs.append(log_text)
+	)
 	add_child(tool_registry)
 	
 	# 启动终端欢迎词
@@ -383,7 +388,7 @@ func _on_input_submitted(text: String) -> void:
 			_print_to_console("无需任何前缀，直接打字下达命令。引擎会自动跑暗骰结算。\n  [color=cyan]示例: 让日奈去调教千世的口交技术，可以粗暴一点。[/color]")
 			
 			_print_to_console("\n[color=yellow]【模式 2：沉浸式角色扮演对话 (/chat)】[/color]")
-			_print_to_console("输入 '/chat 角色名(可多选) 你的对话'，直接与角色互动（带记忆隔离）。\n  [color=cyan]示例: /chat 日奈,千世 你们昨晚感觉怎么样呀？[/color]")
+			_print_to_console("输入 '/chat 角色名(可多选) 你的对话'，直接与角色互动（带记忆隔离）。\n  [color=cyan]示例: /chat 日奈,千世 你们昨晚感觉怎么样呀？[/color]\n大模型会根据剧情发展自动修改并提升角色的【属性等级】（言出法随，跳过挂机练级）。\n  [color=cyan]示例: /chat 优香 请你为我提供口交服务，我要提升你的技巧并降低你的反抗。[/color]")
 			
 			_print_to_console("\n[color=yellow]【模式 3：系统管理员求助 (/miku)】[/color]")
 			_print_to_console("输入 '/miku 你的问题' 召唤系统娘，她能看到所有隐藏数据。\n  [color=cyan]示例: /miku 帮我查一下千世为什么老是抗拒调教？[/color]")
@@ -996,17 +1001,43 @@ func _refresh_save_list() -> void:
 func _on_llm_reply(reply_text: String) -> void:
 	current_state = AppState.IDLE
 	
-	# 通过 ToolRegistry 拦截和处理所有的伪函数（JSON 数组或特殊宏标签），并且剔除了 thinking 过程
+	# ======= 调试打印：输出最原始的、未经任何处理的大模型返回 =======
+	print("\n[RAW LLM RESPONSE START]")
+	print(reply_text)
+	print("[RAW LLM RESPONSE END]\n")
+	# =========================================================
+	
+	pending_system_logs.clear() # 执行前清空
+	
+	# 通过 ToolRegistry 拦截和处理所有的伪函数（JSON 数组或特殊宏标签）
 	var clean_text = tool_registry.parse_and_route(reply_text, current_request_mode)
 	
+	# 过滤大模型的思考过程（确保不会存入历史记录污染下文）
+	# 注意：因为使用了预填充，大模型的输出往往是从思考过程的后半截开始，所以必须从 ^ 匹配到第一个 </thinking>
+	var regex_think = RegEx.new()
+	regex_think.compile("(?s)^.*?</think(?:ing)?>")
+	var text_without_think = regex_think.sub(clean_text, "", true)
+	
+	var final_pure_text = text_without_think.strip_edges()
+	
 	# 动态组装前端显示文本：判断是否要显示思考过程
-	var text_to_print = clean_text
+	var text_to_print = final_pure_text
 	if hide_thinking_toggle != null and not hide_thinking_toggle.button_pressed:
-		var think_match = RegEx.create_from_string("(?s)<think(?:ing)?>.*?</think(?:ing)?>").search(reply_text)
+		var think_match = regex_think.search(reply_text)
 		if think_match:
-			text_to_print = "[color=gray]" + think_match.get_string() + "[/color]\n\n" + clean_text
+			# 将抠出来的半截思考过程染成灰色
+			var thoughts = think_match.get_string().replace("</thinking>", "").replace("</think>", "").strip_edges()
+			if thoughts != "":
+				text_to_print = "[color=gray]" + thoughts + "[/color]\n\n" + final_pure_text
 			
 	_print_to_console("[color=pink]System/LLM返回 >\n" + text_to_print + "[/color]")
+	
+	# 如果有截获的系统提示（如数值变动），在对话后方统一打印出一个总结区域
+	if pending_system_logs.size() > 0:
+		var summary = "\n[color=cyan]=== 互动属性结算 ===[/color]\n"
+		for log in pending_system_logs:
+			summary += "[color=yellow]" + log + "[/color]\n"
+		_print_to_console(summary)
 	
 	# 如果是角色扮演或Miku聊天，把剔除了废话的纯净正文存入全局记忆池
 	if current_request_mode == LLMClient.MODE_ROLEPLAY or current_request_mode == LLMClient.MODE_META:

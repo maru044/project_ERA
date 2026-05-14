@@ -133,6 +133,12 @@ func apply_stat_change(char_id: String, stat_key: String, change_amount: int) ->
 		elif change_amount < 0:
 			char_data.reduce_exp(stat_key, abs(change_amount))
 			
+func apply_stat_level_change(char_id: String, stat_key: String, change_amount: int) -> void:
+	var char_data = get_character(char_id)
+	if char_data and char_data.stats.has(stat_key):
+		var current_lvl = char_data.stats[stat_key]["level"]
+		char_data.set_stat_level(stat_key, current_lvl + change_amount)
+			
 func inject_exclusive_memory(char_ids: Array, memory_text: String) -> void:
 	for c_id in char_ids:
 		var char_data = get_character(c_id)

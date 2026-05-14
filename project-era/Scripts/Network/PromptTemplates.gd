@@ -163,6 +163,9 @@ const GAME_FORMAT_RULES = """
 [使用简体中文开始游戏:]
 <content>
 在此处创作正文。各部分中注意分段，避免很多句话堆在一起。
+（如果发生了亲密互动或情感波动，<content>标签内的适当位置必须输出数值增减标签供系统读取！注意你可以自由改变角色的任意属性（如 sensory_B, lust, yuri_obedience 等），数值通常在 5 左右。）
+[STAT_CHANGE: toki_01 | sensory_M | +3]
+[STAT_CHANGE: toki_01 | lust | -2]
 </content>
 </story plot>
 """

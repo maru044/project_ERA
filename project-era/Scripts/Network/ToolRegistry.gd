@@ -7,6 +7,8 @@ extends Node
 # 伪函数指令（JSON块、状态改变标签、私密记忆标签），并自动路由给各大 Manager 执行。
 # ==============================================================================
 
+signal on_system_log_generated(log_text: String)
+
 var regex_json: RegEx
 var regex_json_raw: RegEx
 var regex_stat: RegEx
@@ -35,13 +37,13 @@ func _compile_regex() -> void:
 	regex_json_raw = RegEx.new()
 	regex_json_raw.compile("(?s)(\\[\\s*\\{.*?\\}\\s*\\])")
 	
-	# 2. 匹配 [STAT_CHANGE: char_id | stat_key | +amount]
+	# 2. 匹配 [STAT_CHANGE: char_id | stat_key | +amount] (兼容逗号和竖线)
 	regex_stat = RegEx.new()
-	regex_stat.compile("\\[STAT_CHANGE:\\s*([\\w_]+)\\s*\\|\\s*([\\w_]+)\\s*\\|\\s*([+-]?\\d+)\\s*\\]")
+	regex_stat.compile("\\[STAT_CHANGE:\\s*([\\w_]+)\\s*[,|]\\s*([\\w_]+)\\s*[,|]\\s*([+-]?\\d+)\\s*\\]")
 	
-	# 3. 匹配 [ADD_MEMORY: char_A, char_B | 发生了一件秘密的事情]
+	# 3. 匹配 [ADD_MEMORY: char_A, char_B | 发生了一件秘密的事情] (兼容逗号和竖线)
 	regex_memory = RegEx.new()
-	regex_memory.compile("\\[ADD_MEMORY:\\s*([\\w_,\\s]+)\\s*\\|\\s*([^]]+)\\s*\\]")
+	regex_memory.compile("\\[ADD_MEMORY:\\s*([\\w_,\\s]+)\\s*[,|]\\s*([^]]+)\\s*\\]")
 
 # ---------------------------------------------------------
 # 主解析入口：接收大模型返回的纯文本
@@ -60,14 +62,11 @@ func parse_and_route(llm_raw_text: String, current_mode: String) -> String:
 		
 		if json_match:
 			json_str = json_match.get_string(1)
-			# 测试期间不抹除 JSON，方便 debug
-			# clean_text = regex_json.sub(clean_text, "", true)
 		else:
 			# 兜底捕获：尝试寻找裸露的 JSON 数组
 			var raw_match = regex_json_raw.search(llm_raw_text)
 			if raw_match:
 				json_str = raw_match.get_string(1)
-				# clean_text = regex_json_raw.sub(clean_text, "", true)
 				
 		if json_str != "":
 			var json = JSON.new()
@@ -79,47 +78,44 @@ func parse_and_route(llm_raw_text: String, current_mode: String) -> String:
 		
 	# ==========================================
 	# B. 提取动态数值修正 (generate_stage_reports)
-	# 仅在沉浸扮演模式允许手动修改数值，防止 Miku 或 口上反馈复读产生二次叠加
+	# 仅在角色扮演模式和口上模式允许手动修改数值，防止 Miku 复读产生二次叠加
 	# ==========================================
-	if current_mode == LLMClient.MODE_ROLEPLAY:
+	if current_mode == LLMClient.MODE_ROLEPLAY or current_mode == LLMClient.MODE_KOUJO:
 		var stat_matches = regex_stat.search_all(llm_raw_text)
 		for m in stat_matches:
 			var target_id = m.get_string(1).strip_edges()
 			var stat_key = m.get_string(2).strip_edges()
 			var amount = int(m.get_string(3).strip_edges())
 			
-			char_manager.apply_stat_change(target_id, stat_key, amount)
-			print("[ToolRegistry] 捕获并执行数值修正: ", target_id, " | ", stat_key, " | ", amount)
+			char_manager.apply_stat_level_change(target_id, stat_key, amount)
+			var target = char_manager.get_character(target_id)
+			var t_name = target.char_name if target else target_id
+			on_system_log_generated.emit("[系统提示: " + t_name + " 的 " + stat_key + " 等级变动了 " + str(amount) + " 级]")
 	
 	# 无论是否执行，只要出现都把标签抹除，保证前端显示干净
 	clean_text = regex_stat.sub(clean_text, "", true)
 	
 	# ==========================================
 	# C. 提取独占记忆 (inject_exclusive_memory)
-	# 仅在沉浸扮演模式允许添加记忆
 	# ==========================================
-	if current_mode == LLMClient.MODE_ROLEPLAY:
+	if current_mode == LLMClient.MODE_ROLEPLAY or current_mode == LLMClient.MODE_KOUJO:
 		var mem_matches = regex_memory.search_all(llm_raw_text)
 		for m in mem_matches:
 			var raw_ids = m.get_string(1)
 			var memory_content = m.get_string(2).strip_edges()
 			
-			# 将 "char_A, char_B" 切割为数组
 			var target_ids: Array = []
+			var target_names: Array = []
 			for id_str in raw_ids.split(","):
-				target_ids.append(id_str.strip_edges())
+				var c_id = id_str.strip_edges()
+				target_ids.append(c_id)
+				var target = char_manager.get_character(c_id)
+				target_names.append(target.char_name if target else c_id)
 				
 			char_manager.inject_exclusive_memory(target_ids, memory_content)
-			print("[ToolRegistry] 捕获独占记忆，分配给: ", target_ids)
+			on_system_log_generated.emit("[系统提示: 成功为 " + ", ".join(target_names) + " 注入了新的私密记忆]")
 			
 	# 无论是否执行，都抹除记忆注入标签
 	clean_text = regex_memory.sub(clean_text, "", true)
 	
-	# 最后，残忍地剥离大模型的全部思考过程（防止存入历史记录污染下文）
-	clean_text = regex_think.sub(clean_text, "", true)
-	
-	# 另外，去掉为了格式必须加的特殊标签，以免破坏沉浸感
-	clean_text = clean_text.replace("[使用简体中文开始游戏:]", "")
-	
-	# 返回抹除了所有 [系统宏] 和思考过程的纯净文本，交给 Console UI 显示与保存
 	return clean_text.strip_edges()
